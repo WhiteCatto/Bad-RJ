@@ -1,9 +1,9 @@
 # Build artifacts
-dist/
 build/
 *.fap
 *.elf
 *.map
+!dist/bad-rj.fap
 
 # IDE
 .vscode/
