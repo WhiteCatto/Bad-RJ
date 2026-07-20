@@ -7,7 +7,7 @@ App(
     fap_category="GPIO",
     fap_icon="assets/icon.png",
     fap_icon_assets="assets",
-    fap_author="Dok2d, Edenh, nullsp3ct0r & WhiteCatto",
+    fap_author="Dok2d, nullsp3ct0r & WhiteCatto",
     fap_version="2.9.0",
     fap_description="Portable LAN tester & security analyzer: ARP, ping, DHCP, LLDP/CDP, port scan, SNMP, NTP sync, IPMI, TFTP, PXE download, 802.1X, VLAN, rogue DHCP/RA detection via W5500",
     fap_weburl="https://github.com/WhiteCatto/Bad-RJ",
