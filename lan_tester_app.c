@@ -2031,7 +2031,8 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         "rogue DHCP/RA detect.\n"
         "v2.9.0 | Bad-RJ\n"
         "fork by nullsp3ct0r\n"
-        "of dok2d/fz-W5500-\n"
+        "& WhiteCatto, of\n"
+        "dok2d/fz-W5500-\n"
         "lan-analyse\n");
     view_set_previous_callback(
         text_box_get_view(app->text_box_about), lan_tester_nav_back_settings);
@@ -2287,7 +2288,7 @@ static void lan_tester_update_menu_header(LanTesterApp* app) {
             submenu_set_header(app->submenu, "LAN [NO LINK]");
         }
     } else {
-        submenu_set_header(app->submenu, "LAN Tester");
+        submenu_set_header(app->submenu, "Bad-RJ");
     }
 }
 
