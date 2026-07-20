@@ -73,8 +73,8 @@ Always build and lint after changes. Never push code that doesn't compile or has
 
 When adding features, update ALL of:
 - `CHANGELOG.md` (English, user-facing language, no programmer jargon)
-- `README.md` (feature table EN + RU sections, architecture tree)
-- `docs/en/README.md` + `docs/ru/README.md` (feature tables)
+- `README.md` (feature table, architecture tree)
+- `docs/en/README.md` (feature tables)
 - `lan_tester_app.c` About view (if version bumped)
 - `application.fam` (version, description)
 

@@ -24,10 +24,6 @@ The File Manager is the most security-sensitive component since it exposes an HT
 
 **Content-Disposition safety**: special characters are stripped from filenames in the `Content-Disposition` HTTP header used for downloads. This prevents header injection attacks.
 
-### PXE Server (TFTP)
-
-**Path traversal protection**: TFTP filenames containing `..` or starting with `/` are rejected. This prevents a malicious PXE client from requesting files outside the `/ext/apps_data/lan_tester/pxe/` directory.
-
 ### DNS
 
 **Response validation**: DNS responses are checked to ensure they come from the expected DNS server IP address. This mitigates DNS spoofing attacks from other devices on the LAN. If the response source IP doesn't match the server the query was sent to, the response is discarded.

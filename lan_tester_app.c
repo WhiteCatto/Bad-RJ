@@ -14,7 +14,6 @@
 #include "protocols/discovery.h"
 #include "protocols/stp_vlan.h"
 #include "protocols/history.h"
-#include "protocols/pxe_server.h"
 #include "protocols/file_manager.h"
 #include "protocols/snmp_client.h"
 #include "protocols/ntp_diag.h"
@@ -293,6 +292,19 @@ static void lan_tester_settings_load(LanTesterApp* app) {
     app->dns_custom_server[2] = 8;
     app->dns_custom_server[3] = 8;
     strncpy(app->dns_custom_ip_input, "8.8.8.8", sizeof(app->dns_custom_ip_input));
+    app->net_static_enabled = false;
+    app->static_ip[0] = 192;
+    app->static_ip[1] = 168;
+    app->static_ip[2] = 1;
+    app->static_ip[3] = 50;
+    app->static_mask[0] = 255;
+    app->static_mask[1] = 255;
+    app->static_mask[2] = 255;
+    app->static_mask[3] = 0;
+    app->static_gw[0] = 192;
+    app->static_gw[1] = 168;
+    app->static_gw[2] = 1;
+    app->static_gw[3] = 1;
     app->ping_count = 4;
     app->ping_timeout_ms = 3000;
     app->ping_interval_ms = 1000;
@@ -319,11 +331,6 @@ static void lan_tester_settings_load(LanTesterApp* app) {
     strncpy(app->ipmi_ip_input, "192.168.1.1", sizeof(app->ipmi_ip_input));
     strncpy(app->vlan_hop_input, "1,10,20,50,100", sizeof(app->vlan_hop_input));
 
-    /* Defaults — PXE */
-    strncpy(app->pxe_server_ip_input, "192.168.77.1", sizeof(app->pxe_server_ip_input));
-    strncpy(app->pxe_client_ip_input, "192.168.77.10", sizeof(app->pxe_client_ip_input));
-    strncpy(app->pxe_subnet_input, "255.255.255.0", sizeof(app->pxe_subnet_input));
-
     Storage* storage = furi_record_open(RECORD_STORAGE);
     File* file = storage_file_alloc(storage);
 
@@ -349,6 +356,14 @@ static void lan_tester_settings_load(LanTesterApp* app) {
             app->dns_custom_server,
             app->dns_custom_ip_input,
             sizeof(app->dns_custom_ip_input));
+        if(strstr(buf, "net_static=1")) app->net_static_enabled = true;
+        {
+            /* Scratch buffer discarded after parsing — only the parsed octets are kept */
+            char tmp[16];
+            settings_parse_ip(buf, "static_ip=", app->static_ip, tmp, sizeof(tmp));
+            settings_parse_ip(buf, "static_mask=", app->static_mask, tmp, sizeof(tmp));
+            settings_parse_ip(buf, "static_gw=", app->static_gw, tmp, sizeof(tmp));
+        }
         char* pc = strstr(buf, "ping_count=");
         if(pc) {
             int val = atoi(pc + 11);
@@ -435,23 +450,10 @@ static void lan_tester_settings_load(LanTesterApp* app) {
         settings_parse_str(buf, "ipmi_ip=", app->ipmi_ip_input, sizeof(app->ipmi_ip_input));
         settings_parse_str(buf, "vlan_hop=", app->vlan_hop_input, sizeof(app->vlan_hop_input));
 
-        /* PXE settings */
-        settings_parse_str(
-            buf, "pxe_server_ip=", app->pxe_server_ip_input, sizeof(app->pxe_server_ip_input));
-        settings_parse_str(
-            buf, "pxe_client_ip=", app->pxe_client_ip_input, sizeof(app->pxe_client_ip_input));
-        settings_parse_str(
-            buf, "pxe_subnet=", app->pxe_subnet_input, sizeof(app->pxe_subnet_input));
-
         free(buf);
     }
     storage_file_free(file);
     furi_record_close(RECORD_STORAGE);
-
-    /* Parse PXE IP arrays from loaded text */
-    lan_tester_parse_ip(app->pxe_server_ip_input, app->pxe_server_ip);
-    lan_tester_parse_ip(app->pxe_client_ip_input, app->pxe_client_ip);
-    lan_tester_parse_ip(app->pxe_subnet_input, app->pxe_subnet);
 }
 
 static void lan_tester_settings_save(LanTesterApp* app) {
@@ -470,6 +472,8 @@ static void lan_tester_settings_save(LanTesterApp* app) {
             buf,
             768,
             "autosave=%d\nsound=%d\ndns_custom=%d\ndns_ip=%s\n"
+            "net_static=%d\nstatic_ip=%d.%d.%d.%d\nstatic_mask=%d.%d.%d.%d\n"
+            "static_gw=%d.%d.%d.%d\n"
             "ping_count=%d\nping_timeout=%d\nping_interval=%d\n"
             "autotest_dns=%s\nautotest_lldp_wait=%d\nautotest_arp=%d\n"
             "mac=%02X:%02X:%02X:%02X:%02X:%02X\n"
@@ -477,12 +481,24 @@ static void lan_tester_settings_save(LanTesterApp* app) {
             "traceroute_host=%s\nport_scan_ip=%s\nping_sweep=%s\n"
             "snmp_ip=%s\nntp_ip=%s\nntp_tz_h=%d\nntp_tz_m=%d\nnetbios_ip=%s\n"
             "dns_poison_host=%s\ntftp_ip=%s\ntftp_file=%s\n"
-            "ipmi_ip=%s\nvlan_hop=%s\n"
-            "pxe_server_ip=%s\npxe_client_ip=%s\npxe_subnet=%s\n",
+            "ipmi_ip=%s\nvlan_hop=%s\n",
             app->setting_autosave ? 1 : 0,
             app->setting_sound ? 1 : 0,
             app->dns_custom_enabled ? 1 : 0,
             app->dns_custom_ip_input,
+            app->net_static_enabled ? 1 : 0,
+            app->static_ip[0],
+            app->static_ip[1],
+            app->static_ip[2],
+            app->static_ip[3],
+            app->static_mask[0],
+            app->static_mask[1],
+            app->static_mask[2],
+            app->static_mask[3],
+            app->static_gw[0],
+            app->static_gw[1],
+            app->static_gw[2],
+            app->static_gw[3],
             app->ping_count,
             app->ping_timeout_ms,
             app->ping_interval_ms,
@@ -510,10 +526,14 @@ static void lan_tester_settings_save(LanTesterApp* app) {
             app->tftp_ip_input,
             app->tftp_filename_input,
             app->ipmi_ip_input,
-            app->vlan_hop_input,
-            app->pxe_server_ip_input,
-            app->pxe_client_ip_input,
-            app->pxe_subnet_input);
+            app->vlan_hop_input);
+        /* snprintf returns the length that *would* have been written; clamp before
+         * writing in case the settings text grew past the 768B buffer. */
+        if(len < 0) {
+            len = 0;
+        } else if(len >= 768) {
+            len = 767;
+        }
         storage_file_write(file, buf, len);
         storage_file_close(file);
         free(buf);
@@ -570,7 +590,6 @@ static void lan_tester_do_ping_sweep(LanTesterApp* app);
 static void lan_tester_do_ping_sweep_detect(LanTesterApp* app);
 static void lan_tester_do_stp_vlan(LanTesterApp* app);
 static void lan_tester_do_eth_bridge(LanTesterApp* app);
-static void lan_tester_do_pxe_server(LanTesterApp* app);
 static void lan_tester_do_file_manager(LanTesterApp* app);
 static void lan_tester_do_packet_capture(LanTesterApp* app);
 static void lan_tester_do_autotest(LanTesterApp* app);
@@ -1279,6 +1298,19 @@ static void settings_dns_custom_changed(VariableItem* item) {
     }
 }
 
+static const char* const net_mode_options[] = {"DHCP", "Static"};
+
+static void settings_net_static_changed(VariableItem* item) {
+    uint8_t idx = variable_item_get_current_value_index(item);
+    variable_item_set_current_value_text(item, net_mode_options[idx]);
+    if(g_app) {
+        g_app->net_static_enabled = (idx == 1);
+        /* Force a fresh network setup next time a tool runs */
+        g_app->dhcp_valid = false;
+        lan_tester_settings_save(g_app);
+    }
+}
+
 static void settings_ping_count_changed(VariableItem* item) {
     uint8_t idx = variable_item_get_current_value_index(item);
     uint8_t count = idx + 1; /* 0 -> 1, 99 -> 100 */
@@ -1354,6 +1386,71 @@ static void dns_custom_ip_input_callback(void* context) {
     view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewSettings);
 }
 
+/* Static IP setup wizard: one shared VariableItem walks IP -> Mask -> Gateway
+ * using a single ip_keyboard instance and a single shared scratch buffer,
+ * instead of 3 separate persistent Settings entries. */
+static void static_ip_wizard_open(LanTesterApp* app, uint8_t step);
+
+static void static_ip_wizard_step_callback(void* context) {
+    LanTesterApp* app = context;
+    furi_assert(app);
+    app->dhcp_valid = false;
+    switch(app->static_wizard_step) {
+    case 0:
+        lan_tester_parse_ip(app->static_ip_edit_buf, app->static_ip);
+        static_ip_wizard_open(app, 1);
+        break;
+    case 1:
+        lan_tester_parse_ip(app->static_ip_edit_buf, app->static_mask);
+        static_ip_wizard_open(app, 2);
+        break;
+    default:
+        lan_tester_parse_ip(app->static_ip_edit_buf, app->static_gw);
+        lan_tester_settings_save(app);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewSettings);
+        break;
+    }
+}
+
+static void static_ip_wizard_open(LanTesterApp* app, uint8_t step) {
+    app->static_wizard_step = step;
+    const char* header;
+    const uint8_t* octets;
+    switch(step) {
+    case 0:
+        header = "Static IP:";
+        octets = app->static_ip;
+        break;
+    case 1:
+        header = "Static Subnet Mask:";
+        octets = app->static_mask;
+        break;
+    default:
+        header = "Static Gateway:";
+        octets = app->static_gw;
+        break;
+    }
+    snprintf(
+        app->static_ip_edit_buf,
+        sizeof(app->static_ip_edit_buf),
+        "%d.%d.%d.%d",
+        octets[0],
+        octets[1],
+        octets[2],
+        octets[3]);
+    ip_keyboard_setup(
+        app->ip_keyboard,
+        header,
+        app->static_ip_edit_buf,
+        false,
+        static_ip_wizard_step_callback,
+        app,
+        app->static_ip_edit_buf,
+        sizeof(app->static_ip_edit_buf),
+        lan_tester_nav_back_settings);
+    view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
+}
+
 /* Helper: get active DNS server (custom if enabled, else DHCP) */
 static void lan_tester_get_dns_server(LanTesterApp* app, uint8_t out_ip[4]) {
     if(app->dns_custom_enabled) {
@@ -1369,15 +1466,17 @@ typedef enum {
     LanTesterSettingsItemSound = 1,
     LanTesterSettingsItemDnsCustom = 2,
     LanTesterSettingsItemDnsServer = 3,
-    LanTesterSettingsItemPingCount = 4,
-    LanTesterSettingsItemPingTimeout = 5,
-    LanTesterSettingsItemPingInterval = 6,
-    LanTesterSettingsItemClearHistory = 7,
-    LanTesterSettingsItemMacChanger = 8,
-    LanTesterSettingsItemAutoTestDnsHost = 9,
-    LanTesterSettingsItemAutoTestLldpWait = 10,
-    LanTesterSettingsItemAutoTestArpScan = 11,
-    LanTesterSettingsItemAbout = 12,
+    LanTesterSettingsItemNetStatic = 4,
+    LanTesterSettingsItemStaticConfig = 5,
+    LanTesterSettingsItemPingCount = 6,
+    LanTesterSettingsItemPingTimeout = 7,
+    LanTesterSettingsItemPingInterval = 8,
+    LanTesterSettingsItemClearHistory = 9,
+    LanTesterSettingsItemMacChanger = 10,
+    LanTesterSettingsItemAutoTestDnsHost = 11,
+    LanTesterSettingsItemAutoTestLldpWait = 12,
+    LanTesterSettingsItemAutoTestArpScan = 13,
+    LanTesterSettingsItemAbout = 14,
     LanTesterSettingsItemCount,
 } LanTesterSettingsItem;
 
@@ -1395,6 +1494,8 @@ static void settings_enter_callback(void* context, uint32_t index) {
             sizeof(app->dns_custom_ip_input),
             lan_tester_nav_back_settings);
         view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
+    } else if(index == LanTesterSettingsItemStaticConfig) {
+        static_ip_wizard_open(app, 0);
     } else if(index == LanTesterSettingsItemClearHistory) {
         /* Delete all .txt files from history dir without loading full list into RAM */
         Storage* storage = furi_record_open(RECORD_STORAGE);
@@ -1453,227 +1554,15 @@ static void settings_enter_callback(void* context, uint32_t index) {
     }
 }
 
-/* ==================== PXE Settings callbacks ==================== */
-
 static uint32_t lan_tester_nav_back_settings(void* context) {
     UNUSED(context);
     lan_tester_stop_worker_on_back();
     return LanTesterViewSettings;
 }
 
-static uint32_t lan_tester_nav_back_pxe_settings(void* context) {
-    UNUSED(context);
-    return LanTesterViewPxeSettings;
-}
-
-static void pxe_server_ip_input_callback(void* context) {
-    LanTesterApp* app = context;
-    furi_assert(app);
-    lan_tester_parse_ip(app->pxe_server_ip_input, app->pxe_server_ip);
-    variable_item_set_current_value_text(app->pxe_item_sip, app->pxe_server_ip_input);
-    view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewPxeSettings);
-}
-
-static void pxe_client_ip_input_callback(void* context) {
-    LanTesterApp* app = context;
-    furi_assert(app);
-    lan_tester_parse_ip(app->pxe_client_ip_input, app->pxe_client_ip);
-    variable_item_set_current_value_text(app->pxe_item_cip, app->pxe_client_ip_input);
-    view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewPxeSettings);
-}
-
-static void pxe_subnet_input_callback(void* context) {
-    LanTesterApp* app = context;
-    furi_assert(app);
-    lan_tester_parse_ip(app->pxe_subnet_input, app->pxe_subnet);
-    variable_item_set_current_value_text(app->pxe_item_sub, app->pxe_subnet_input);
-    view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewPxeSettings);
-}
-
-static void pxe_dhcp_toggle_callback(VariableItem* item) {
-    uint8_t idx = variable_item_get_current_value_index(item);
-    variable_item_set_current_value_text(item, setting_onoff[idx]);
-    if(g_app) {
-        g_app->pxe_dhcp_enabled = (idx == 1);
-    }
-}
-
-/* Boot file selection cycling callback */
-static void pxe_boot_file_changed(VariableItem* item) {
-    if(!g_app) return;
-    uint8_t idx = variable_item_get_current_value_index(item);
-    LanTesterApp* app = g_app;
-    PxeServerState* scan = &app->pxe_scan;
-
-    if(idx < scan->boot_file_count) {
-        app->pxe_boot_file_idx = idx;
-        char info[96];
-        snprintf(
-            info,
-            sizeof(info),
-            "%s (%luB)",
-            scan->boot_files[idx].filename,
-            (unsigned long)scan->boot_files[idx].file_size);
-        variable_item_set_current_value_text(item, info);
-    }
-}
-
-static void pxe_settings_enter_callback(void* context, uint32_t index) {
-    LanTesterApp* app = context;
-    furi_assert(app);
-
-    switch(index) {
-    case 0: /* >>> Start PXE <<< */ {
-        /* Apply selected boot file to pxe_scan before starting */
-        uint8_t bi = app->pxe_boot_file_idx;
-        if(bi < app->pxe_scan.boot_file_count) {
-            strncpy(
-                app->pxe_scan.boot_filename,
-                app->pxe_scan.boot_files[bi].filename,
-                sizeof(app->pxe_scan.boot_filename) - 1);
-            app->pxe_scan.boot_file_size = app->pxe_scan.boot_files[bi].file_size;
-        }
-        furi_string_set(app->tool_text, "Starting PXE Server...\n");
-        text_box_set_text(app->text_box_tool, furi_string_get_cstr(app->tool_text));
-        lan_tester_worker_start(app, LanTesterMenuItemPxeServer, LanTesterViewToolResult);
-        break;
-    }
-    case 1: /* DHCP Server toggle — handled by change_callback */
-        break;
-    case 2: /* Boot File — cycling handled by change_callback */
-        break;
-    case 3: /* Server IP */
-        ip_keyboard_setup(
-            app->ip_keyboard,
-            "Server IP:",
-            app->pxe_server_ip_input,
-            false,
-            pxe_server_ip_input_callback,
-            app,
-            app->pxe_server_ip_input,
-            sizeof(app->pxe_server_ip_input),
-            lan_tester_nav_back_pxe_settings);
-        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
-        break;
-    case 4: /* Client IP */
-        ip_keyboard_setup(
-            app->ip_keyboard,
-            "Client IP:",
-            app->pxe_client_ip_input,
-            false,
-            pxe_client_ip_input_callback,
-            app,
-            app->pxe_client_ip_input,
-            sizeof(app->pxe_client_ip_input),
-            lan_tester_nav_back_pxe_settings);
-        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
-        break;
-    case 5: /* Subnet Mask */
-        ip_keyboard_setup(
-            app->ip_keyboard,
-            "Subnet Mask:",
-            app->pxe_subnet_input,
-            false,
-            pxe_subnet_input_callback,
-            app,
-            app->pxe_subnet_input,
-            sizeof(app->pxe_subnet_input),
-            lan_tester_nav_back_pxe_settings);
-        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
-        break;
-    case 6: /* Download Boot Files */
-        app->tool_back_view = LanTesterViewPxeSettings;
-        furi_string_set(app->tool_text, "[PXE Download]\nStarting...\n");
-        text_box_set_text(app->text_box_tool, furi_string_get_cstr(app->tool_text));
-        lan_tester_worker_start(app, LanTesterMenuItemPxeDownload, LanTesterViewToolResult);
-        break;
-    }
-}
-
-/* Refresh boot file list and DHCP defaults for PXE settings screen */
-static void pxe_settings_refresh(LanTesterApp* app) {
-    /* Scan for boot files */
-    memset(&app->pxe_scan, 0, sizeof(app->pxe_scan));
-    bool found = pxe_detect_boot_file(&app->pxe_scan);
-
-    if(found && app->pxe_scan.boot_file_count > 0) {
-        /* Set up cycling for boot file selection */
-        app->pxe_boot_file_idx = 0;
-        variable_item_set_values_count(app->pxe_item_boot, app->pxe_scan.boot_file_count);
-        variable_item_set_current_value_index(app->pxe_item_boot, 0);
-        char info[96];
-        snprintf(
-            info,
-            sizeof(info),
-            "%s (%luB)",
-            app->pxe_scan.boot_files[0].filename,
-            (unsigned long)app->pxe_scan.boot_files[0].file_size);
-        variable_item_set_current_value_text(app->pxe_item_boot, info);
-    } else {
-        variable_item_set_values_count(app->pxe_item_boot, 0);
-        variable_item_set_current_value_text(app->pxe_item_boot, "Not found!");
-    }
-
-    /* Probe external DHCP once per session to auto-populate IP fields.
-     * Requires W5500 initialized and link up. */
-    if(!app->pxe_dhcp_probed && app->w5500_initialized && w5500_hal_get_link_status()) {
-        app->pxe_dhcp_probed = true;
-
-        PxeExternalDhcp ext;
-        if(pxe_detect_external_dhcp(W5500_DHCP_SOCKET, app->mac_addr, &ext)) {
-            /* External DHCP found — disable own DHCP, populate from detected subnet */
-            app->pxe_dhcp_enabled = false;
-            variable_item_set_current_value_index(app->pxe_item_dhcp, 0);
-            variable_item_set_current_value_text(app->pxe_item_dhcp, "OFF");
-
-            /* Server IP: offered + 100 (stay in subnet, avoid conflicts) */
-            uint8_t sip[4];
-            memcpy(sip, ext.offered_ip, 4);
-            sip[3] = (uint8_t)(ext.offered_ip[3] + 100);
-            if(sip[3] < ext.offered_ip[3]) sip[3] = 250;
-
-            snprintf(
-                app->pxe_server_ip_input,
-                sizeof(app->pxe_server_ip_input),
-                "%d.%d.%d.%d",
-                sip[0],
-                sip[1],
-                sip[2],
-                sip[3]);
-            lan_tester_parse_ip(app->pxe_server_ip_input, app->pxe_server_ip);
-            variable_item_set_current_value_text(app->pxe_item_sip, app->pxe_server_ip_input);
-
-            /* Client IP: use offered IP */
-            snprintf(
-                app->pxe_client_ip_input,
-                sizeof(app->pxe_client_ip_input),
-                "%d.%d.%d.%d",
-                ext.offered_ip[0],
-                ext.offered_ip[1],
-                ext.offered_ip[2],
-                ext.offered_ip[3]);
-            lan_tester_parse_ip(app->pxe_client_ip_input, app->pxe_client_ip);
-            variable_item_set_current_value_text(app->pxe_item_cip, app->pxe_client_ip_input);
-
-            /* Subnet from DHCP */
-            if(ext.subnet[0] | ext.subnet[1] | ext.subnet[2] | ext.subnet[3]) {
-                snprintf(
-                    app->pxe_subnet_input,
-                    sizeof(app->pxe_subnet_input),
-                    "%d.%d.%d.%d",
-                    ext.subnet[0],
-                    ext.subnet[1],
-                    ext.subnet[2],
-                    ext.subnet[3]);
-                lan_tester_parse_ip(app->pxe_subnet_input, app->pxe_subnet);
-                variable_item_set_current_value_text(app->pxe_item_sub, app->pxe_subnet_input);
-            }
-
-            FURI_LOG_I(TAG, "PXE: ext DHCP detected, defaults updated");
-        }
-        /* If no external DHCP, keep the hardcoded defaults (192.168.77.x) */
-    }
-}
+/* PXE Download (client) is launched directly from the Utilities menu — see
+ * LanTesterMenuItemPxeDownload in lan_tester_submenu_callback. It shares the
+ * generic tool worker/TextBox and has no PXE-Server dependency. */
 
 static LanTesterApp* lan_tester_app_alloc(void) {
     LanTesterApp* app = malloc(sizeof(LanTesterApp));
@@ -1875,8 +1764,8 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         app);
     submenu_add_item(
         app->submenu_cat_utilities,
-        "PXE Server",
-        LanTesterMenuItemPxeServer,
+        "PXE Download",
+        LanTesterMenuItemPxeDownload,
         lan_tester_submenu_callback,
         app);
     submenu_add_item(
@@ -2064,58 +1953,6 @@ static LanTesterApp* lan_tester_app_alloc(void) {
      * Eliminates 4 KB alloc/free per tool launch (prevents heap fragmentation). */
     app->worker_thread = furi_thread_alloc_ex("LanWorker", 4 * 1024, lan_tester_worker_fn, app);
 
-    /* PXE Server views */
-
-    /* PXE text defaults + IP arrays set in settings_load(), just set DHCP flag */
-    app->pxe_dhcp_enabled = true;
-
-    /* PXE Help TextBox (unused, kept for view ID compatibility) */
-    app->text_box_pxe_help = text_box_alloc();
-    view_dispatcher_add_view(
-        app->view_dispatcher, LanTesterViewPxeHelp, text_box_get_view(app->text_box_pxe_help));
-
-    /* PXE Settings (VariableItemList) — reordered: Start first */
-    app->pxe_settings_list = variable_item_list_alloc();
-    view_set_previous_callback(
-        variable_item_list_get_view(app->pxe_settings_list), lan_tester_nav_back_utilities);
-    view_dispatcher_add_view(
-        app->view_dispatcher,
-        LanTesterViewPxeSettings,
-        variable_item_list_get_view(app->pxe_settings_list));
-
-    /* Index 0: Start PXE */
-    variable_item_list_add(app->pxe_settings_list, ">>> Start PXE <<<", 0, NULL, app);
-
-    /* Index 1: DHCP Server toggle */
-    app->pxe_item_dhcp = variable_item_list_add(
-        app->pxe_settings_list, "DHCP Server", 2, pxe_dhcp_toggle_callback, app);
-    variable_item_set_current_value_index(app->pxe_item_dhcp, 1); /* ON by default */
-    variable_item_set_current_value_text(app->pxe_item_dhcp, "ON");
-
-    /* Index 2: Boot File (cycling if multiple files detected) */
-    app->pxe_item_boot =
-        variable_item_list_add(app->pxe_settings_list, "Boot File", 0, pxe_boot_file_changed, app);
-    variable_item_set_current_value_text(app->pxe_item_boot, "Detecting...");
-
-    /* Index 3: Server IP */
-    app->pxe_item_sip = variable_item_list_add(app->pxe_settings_list, "Server IP", 0, NULL, app);
-    variable_item_set_current_value_text(app->pxe_item_sip, app->pxe_server_ip_input);
-
-    /* Index 4: Client IP */
-    app->pxe_item_cip = variable_item_list_add(app->pxe_settings_list, "Client IP", 0, NULL, app);
-    variable_item_set_current_value_text(app->pxe_item_cip, app->pxe_client_ip_input);
-
-    /* Index 5: Subnet Mask */
-    app->pxe_item_sub =
-        variable_item_list_add(app->pxe_settings_list, "Subnet Mask", 0, NULL, app);
-    variable_item_set_current_value_text(app->pxe_item_sub, app->pxe_subnet_input);
-
-    /* Index 6: Download Boot Files */
-    variable_item_list_add(app->pxe_settings_list, "Download Files", 0, NULL, app);
-
-    variable_item_list_set_enter_callback(
-        app->pxe_settings_list, pxe_settings_enter_callback, app);
-
     /* File Manager views */
     /* Packet Capture view */
     app->view_packet_capture = view_alloc();
@@ -2190,11 +2027,12 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         "SNMP, DHCP, LLDP/CDP,\n"
         "802.1X, VLAN, IPMI,\n"
         "TFTP, NTP,\n"
-        "PXE boot/download,\n"
+        "PXE download,\n"
         "rogue DHCP/RA detect.\n"
-        "v2.8.0 | by dok2d\n"
-        "github.com/dok2d/\n"
-        "fz-W5500-lan-analyse\n");
+        "v2.9.0 | Bad-RJ\n"
+        "fork by nullsp3ct0r\n"
+        "of dok2d/fz-W5500-\n"
+        "lan-analyse\n");
     view_set_previous_callback(
         text_box_get_view(app->text_box_about), lan_tester_nav_back_settings);
     view_dispatcher_add_view(
@@ -2223,7 +2061,18 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         variable_item_list_add(app->settings_list, "DNS Server", 0, NULL, app);
     variable_item_set_current_value_text(item_dns_ip, app->dns_custom_ip_input);
 
-    /* Ping count (index 4) — 1..100 */
+    /* Network Mode: DHCP / Static (index 4) */
+    VariableItem* item_net_static = variable_item_list_add(
+        app->settings_list, "Network Mode", 2, settings_net_static_changed, app);
+
+    /* Static IP config (index 5) — opens a 3-step wizard (IP -> Mask -> Gateway)
+     * that reuses a single ip_keyboard + scratch buffer. Only used when Network
+     * Mode is Static; harmless to configure otherwise. */
+    VariableItem* item_static_cfg =
+        variable_item_list_add(app->settings_list, "Static IP Config", 0, NULL, app);
+    variable_item_set_current_value_text(item_static_cfg, "Press OK");
+
+    /* Ping count (index 6) — 1..100 */
     VariableItem* item_ping_count = variable_item_list_add(
         app->settings_list, "Ping Count", 100, settings_ping_count_changed, app);
 
@@ -2276,6 +2125,9 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     variable_item_set_current_value_text(
         item_dns_custom, setting_onoff[app->dns_custom_enabled ? 1 : 0]);
     variable_item_set_current_value_text(item_dns_ip, app->dns_custom_ip_input);
+    variable_item_set_current_value_index(item_net_static, app->net_static_enabled ? 1 : 0);
+    variable_item_set_current_value_text(
+        item_net_static, net_mode_options[app->net_static_enabled ? 1 : 0]);
 
     /* Ping count: index = count - 1 */
     variable_item_set_current_value_index(item_ping_count, app->ping_count - 1);
@@ -2361,8 +2213,6 @@ static void lan_tester_app_free(LanTesterApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewPortScanMode);
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewSettings);
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewEthBridge);
-    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewPxeSettings);
-    view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewPxeHelp);
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewPacketCapture);
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewHostList);
     view_dispatcher_remove_view(app->view_dispatcher, LanTesterViewHostActions);
@@ -2390,8 +2240,6 @@ static void lan_tester_app_free(LanTesterApp* app) {
     submenu_free(app->submenu_host_list);
     submenu_free(app->submenu_host_actions);
     if(app->bridge_state) free(app->bridge_state);
-    text_box_free(app->text_box_pxe_help);
-    variable_item_list_free(app->pxe_settings_list);
     ip_keyboard_free(app->ip_keyboard);
     submenu_free(app->submenu_history);
     if(app->history_state) free(app->history_state);
@@ -2640,9 +2488,6 @@ static int32_t lan_tester_worker_fn(void* context) {
     case LanTesterMenuItemEthBridge:
         lan_tester_do_eth_bridge(app);
         break; /* Uses custom view, not TextBox */
-    case LanTesterMenuItemPxeServer:
-        lan_tester_do_pxe_server(app);
-        break;
     case LanTesterMenuItemPxeDownload:
         lan_tester_do_pxe_download(app);
         lan_tester_update_view(app->text_box_tool, app->tool_text);
@@ -2814,7 +2659,8 @@ static bool lan_tester_ensure_w5500(LanTesterApp* app) {
 /* ==================== Shared DHCP helper ==================== */
 
 /**
- * Ensure we have a valid DHCP lease. Returns true if dhcp_valid.
+ * Ensure we have a valid network address (either a DHCP lease or the
+ * user-configured static IP). Returns true if dhcp_valid.
  * Uses cached result if available; only runs DHCP once per session
  * (or after link state change).
  */
@@ -2827,6 +2673,25 @@ static bool lan_tester_ensure_dhcp(LanTesterApp* app) {
     if(!w5500_hal_get_link_status()) {
         if(app->setting_sound) notification_message(app->notifications, &sequence_error);
         return false;
+    }
+
+    /* Static IP mode: apply the configured address directly, no DHCP handshake
+     * (and no dependency on a DHCP server being reachable at all). */
+    if(app->net_static_enabled) {
+        if(!(app->static_ip[0] | app->static_ip[1] | app->static_ip[2] | app->static_ip[3])) {
+            /* No static IP configured yet — nothing to apply */
+            if(app->setting_sound) notification_message(app->notifications, &sequence_error);
+            return false;
+        }
+        memcpy(app->dhcp_ip, app->static_ip, 4);
+        memcpy(app->dhcp_mask, app->static_mask, 4);
+        memcpy(app->dhcp_gw, app->static_gw, 4);
+        /* No DHCP-provided DNS in static mode; fall back to the gateway unless
+         * the user has set a custom DNS server (see lan_tester_get_dns_server). */
+        memcpy(app->dhcp_dns, app->static_gw, 4);
+        w5500_hal_set_net_info(app->static_ip, app->static_mask, app->static_gw, app->dhcp_dns);
+        app->dhcp_valid = true;
+        return true;
     }
 
     /* Use cached DHCP if available */
@@ -2916,6 +2781,7 @@ static bool lan_tester_check_dhcp(LanTesterApp* app) {
             app->tool_text,
             !app->w5500_initialized      ? "W5500 Not Found!\n" :
             !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
+            app->net_static_enabled      ? "Static IP not set!\n(Settings>Static IP)\n" :
                                            "DHCP failed.\n");
         return false;
     }
@@ -3685,10 +3551,11 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
         lan_tester_worker_start(app, LanTesterMenuItemEthBridge, LanTesterViewEthBridge);
         break;
 
-    case LanTesterMenuItemPxeServer:
+    case LanTesterMenuItemPxeDownload:
         app->tool_back_view = LanTesterViewCatUtilities;
-        pxe_settings_refresh(app);
-        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewPxeSettings);
+        furi_string_set(app->tool_text, "[PXE Download]\nStarting...\n");
+        text_box_set_text(app->text_box_tool, furi_string_get_cstr(app->tool_text));
+        lan_tester_worker_start(app, LanTesterMenuItemPxeDownload, LanTesterViewToolResult);
         break;
 
     case LanTesterMenuItemFileManager:
@@ -4145,7 +4012,8 @@ static void lan_tester_do_lldp_cdp(LanTesterApp* app) {
 static void lan_tester_do_arp_scan(LanTesterApp* app) {
     furi_string_reset(app->tool_text);
 
-    furi_string_set(app->tool_text, "Getting IP via DHCP...\n");
+    furi_string_set(
+        app->tool_text, app->net_static_enabled ? "Applying static IP...\n" : "Getting IP via DHCP...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
     if(!lan_tester_check_dhcp(app)) return;
@@ -4418,7 +4286,8 @@ static void lan_tester_do_dhcp_analyze(LanTesterApp* app) {
 static void lan_tester_do_ping(LanTesterApp* app) {
     furi_string_reset(app->tool_text);
 
-    furi_string_set(app->tool_text, "Getting IP via DHCP...\n");
+    furi_string_set(
+        app->tool_text, app->net_static_enabled ? "Applying static IP...\n" : "Getting IP via DHCP...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
     if(!lan_tester_check_dhcp(app)) return;
@@ -4462,7 +4331,8 @@ static void lan_tester_do_ping(LanTesterApp* app) {
 static void lan_tester_do_dns_lookup(LanTesterApp* app) {
     furi_string_reset(app->tool_text);
 
-    furi_string_set(app->tool_text, "Getting IP via DHCP...\n");
+    furi_string_set(
+        app->tool_text, app->net_static_enabled ? "Applying static IP...\n" : "Getting IP via DHCP...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
     if(!lan_tester_check_dhcp(app)) return;
@@ -4510,7 +4380,8 @@ static void lan_tester_do_dns_lookup(LanTesterApp* app) {
 static void lan_tester_do_wol(LanTesterApp* app) {
     furi_string_reset(app->tool_text);
 
-    furi_string_set(app->tool_text, "Getting IP via DHCP...\n");
+    furi_string_set(
+        app->tool_text, app->net_static_enabled ? "Applying static IP...\n" : "Getting IP via DHCP...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
     if(!lan_tester_check_dhcp(app)) return;
@@ -4578,7 +4449,8 @@ static void lan_tester_do_mac_changer(LanTesterApp* app) {
 static void lan_tester_do_traceroute(LanTesterApp* app) {
     furi_string_reset(app->tool_text);
 
-    furi_string_set(app->tool_text, "Getting IP via DHCP...\n");
+    furi_string_set(
+        app->tool_text, app->net_static_enabled ? "Applying static IP...\n" : "Getting IP via DHCP...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
     if(!lan_tester_check_dhcp(app)) return;
@@ -4674,7 +4546,8 @@ static bool parse_cidr(const char* str, uint8_t base_ip[4], uint8_t* prefix) {
 static void lan_tester_do_ping_sweep_detect(LanTesterApp* app) {
     furi_string_reset(app->tool_text);
 
-    furi_string_set(app->tool_text, "Getting IP via DHCP...\n");
+    furi_string_set(
+        app->tool_text, app->net_static_enabled ? "Applying static IP...\n" : "Getting IP via DHCP...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
     if(!lan_tester_check_dhcp(app)) {
@@ -4705,7 +4578,8 @@ static void lan_tester_do_ping_sweep_detect(LanTesterApp* app) {
 static void lan_tester_do_ping_sweep(LanTesterApp* app) {
     furi_string_reset(app->tool_text);
 
-    furi_string_set(app->tool_text, "Getting IP via DHCP...\n");
+    furi_string_set(
+        app->tool_text, app->net_static_enabled ? "Applying static IP...\n" : "Getting IP via DHCP...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
     if(!lan_tester_check_dhcp(app)) return;
@@ -4857,7 +4731,8 @@ static void lan_tester_do_ping_sweep(LanTesterApp* app) {
 static void lan_tester_do_discovery(LanTesterApp* app) {
     furi_string_reset(app->tool_text);
 
-    furi_string_set(app->tool_text, "Getting IP via DHCP...\n");
+    furi_string_set(
+        app->tool_text, app->net_static_enabled ? "Applying static IP...\n" : "Getting IP via DHCP...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
     if(!lan_tester_check_dhcp(app)) return;
@@ -5212,7 +5087,8 @@ static void lan_tester_history_file_callback(void* context, uint32_t index) {
 static void lan_tester_do_port_scan(LanTesterApp* app) {
     furi_string_reset(app->tool_text);
 
-    furi_string_set(app->tool_text, "Getting IP via DHCP...\n");
+    furi_string_set(
+        app->tool_text, app->net_static_enabled ? "Applying static IP...\n" : "Getting IP via DHCP...\n");
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
     if(!lan_tester_check_dhcp(app)) return;
@@ -5694,195 +5570,6 @@ static void lan_tester_do_eth_bridge(LanTesterApp* app) {
 #undef BRIDGE_SET_STATUS
 }
 
-/* ==================== PXE Server ==================== */
-
-static void lan_tester_do_pxe_server(LanTesterApp* app) {
-    FuriString* out = app->tool_text;
-    furi_string_reset(out);
-
-    /* Step 1: Init W5500 */
-    if(!lan_tester_ensure_w5500(app)) {
-        furi_string_cat(out, "[PXE] W5500 Not Found!\nCheck SPI wiring.\n");
-        return;
-    }
-
-    /* Step 2: Check link */
-    if(!w5500_hal_get_link_status()) {
-        furi_string_cat(out, "[PXE] No LAN link!\nConnect Ethernet cable.\n");
-        return;
-    }
-
-    /* Step 3: Use boot file selected in settings (already scanned on entry) */
-    PxeServerState state;
-    memset(&state, 0, sizeof(state));
-
-    if(!app->pxe_scan.boot_file_found) {
-        furi_string_printf(
-            out,
-            "[PXE] No boot file!\n"
-            "Place .kpxe or .efi in:\n"
-            "%s/\n"
-            "Recommended:\n"
-            "undionly.kpxe from\n"
-            "netboot.xyz (~70KB)\n",
-            PXE_BOOT_DIR);
-        return;
-    }
-
-    /* Copy selected boot file info */
-    strncpy(state.boot_filename, app->pxe_scan.boot_filename, sizeof(state.boot_filename) - 1);
-    state.boot_file_size = app->pxe_scan.boot_file_size;
-    state.boot_file_found = true;
-
-    /* Step 4: Build config from settings */
-    state.config.dhcp_enabled = app->pxe_dhcp_enabled;
-    memcpy(state.config.client_ip, app->pxe_client_ip, 4);
-    memcpy(state.config.subnet, app->pxe_subnet, 4);
-
-    /* Step 5: When built-in DHCP is OFF and we already have a DHCP lease,
-     * use the real IP so the network can reach our TFTP server. */
-    if(!state.config.dhcp_enabled && app->dhcp_valid) {
-        memcpy(state.config.server_ip, app->dhcp_ip, 4);
-        memcpy(state.config.subnet, app->dhcp_mask, 4);
-        w5500_hal_set_net_info(app->dhcp_ip, app->dhcp_mask, app->dhcp_gw, app->dhcp_dns);
-    } else {
-        memcpy(state.config.server_ip, app->pxe_server_ip, 4);
-        w5500_hal_set_net_info(
-            state.config.server_ip,
-            state.config.subnet,
-            state.config.server_ip,
-            state.config.server_ip);
-    }
-
-    /* Step 6: Open sockets */
-    if(!pxe_server_start(&state)) {
-        furi_string_cat(out, "\n[PXE] Failed to open sockets!\n");
-        lan_tester_update_view(app->text_box_tool, out);
-        return;
-    }
-
-    /* Step 7: Initial status */
-    furi_string_printf(
-        out,
-        "[PXE Server]\n"
-        "IP: %d.%d.%d.%d\n"
-        "DHCP: %s  Files: %d\n"
-        "Waiting for client...\n",
-        state.config.server_ip[0],
-        state.config.server_ip[1],
-        state.config.server_ip[2],
-        state.config.server_ip[3],
-        state.config.dhcp_enabled ? "ON" : "OFF",
-        state.boot_file_count);
-    lan_tester_update_view(app->text_box_tool, out);
-
-    /* Step 8: Main loop */
-    state.running = true;
-    PxeState prev_state = PxeStateIdle;
-    uint32_t prev_blocks = 0;
-
-    while(app->worker_running && state.running) {
-        pxe_server_poll(&state, app->frame_buf, 1024);
-
-        /* Update UI on state change or every 16 blocks */
-        bool need_update = (state.state != prev_state) ||
-                           (state.tftp_blocks_sent - prev_blocks >= 16);
-
-        if(need_update) {
-            prev_state = state.state;
-            prev_blocks = state.tftp_blocks_sent;
-
-            furi_string_reset(out);
-            furi_string_printf(
-                out,
-                "[PXE Server]\nIP: %d.%d.%d.%d  DHCP:%s\n",
-                state.config.server_ip[0],
-                state.config.server_ip[1],
-                state.config.server_ip[2],
-                state.config.server_ip[3],
-                state.config.dhcp_enabled ? "ON" : "OFF");
-            if(state.boot_file_count > 1) {
-                furi_string_cat_printf(out, "Boot: auto (%d files)\n", state.boot_file_count);
-            } else {
-                furi_string_cat_printf(out, "Boot: %s\n", state.boot_filename);
-            }
-
-            switch(state.state) {
-            case PxeStateIdle:
-                furi_string_cat(out, "Waiting for client...\n");
-                break;
-            case PxeStateDhcpOfferSent:
-            case PxeStateDhcpAckSent:
-                furi_string_cat_printf(
-                    out,
-                    "Client: %02X:%02X:%02X:%02X:%02X:%02X\n"
-                    "DHCP handshake...\n",
-                    state.client_mac[0],
-                    state.client_mac[1],
-                    state.client_mac[2],
-                    state.client_mac[3],
-                    state.client_mac[4],
-                    state.client_mac[5]);
-                break;
-            case PxeStateTftpTransfer: {
-                uint8_t pct = state.boot_file_size ?
-                                  (uint8_t)((state.tftp.bytes_sent * 100) / state.boot_file_size) :
-                                  0;
-                uint8_t filled = pct / 5;
-                char bar[23];
-                bar[0] = '[';
-                for(int i = 0; i < 20; i++)
-                    bar[i + 1] = (i < filled) ? '#' : '.';
-                bar[21] = ']';
-                bar[22] = 0;
-                furi_string_cat_printf(out, "%s %d%%\n", bar, pct);
-                furi_string_cat_printf(
-                    out,
-                    "Blk %d/%d (%lu/%lu B)\n",
-                    state.tftp.block_num,
-                    (uint16_t)((state.boot_file_size + TFTP_BLOCK_SIZE - 1) / TFTP_BLOCK_SIZE),
-                    state.tftp.bytes_sent,
-                    state.boot_file_size);
-                break;
-            }
-            case PxeStateDone:
-                furi_string_cat_printf(
-                    out,
-                    "COMPLETE! %lu B in %lu blk\n",
-                    state.tftp.bytes_sent,
-                    state.tftp_blocks_sent);
-                break;
-            case PxeStateError:
-                furi_string_cat_printf(out, "ERROR! Errs: %lu\n", state.tftp_errors);
-                break;
-            }
-            lan_tester_update_view(app->text_box_tool, out);
-        }
-
-        /* After Done → reset to Idle for next client */
-        if(state.state == PxeStateDone) {
-            furi_delay_ms(2000); /* Show "COMPLETE" for 2 sec */
-            state.state = PxeStateIdle;
-            state.client_seen = false;
-        }
-
-        furi_delay_ms(10);
-    }
-
-    /* Cleanup */
-    pxe_server_stop(&state);
-
-    furi_string_printf(
-        out,
-        "[PXE Stopped]\nDHCP: %lu disc, %lu req\nTFTP: %lu req, %lu blk\nErr: %lu\n",
-        state.dhcp_discovers,
-        state.dhcp_requests,
-        state.tftp_requests,
-        state.tftp_blocks_sent,
-        state.tftp_errors);
-    if(app->setting_sound) notification_message(app->notifications, &sequence_success);
-}
-
 /* ==================== Packet Capture ==================== */
 
 /* ==================== Auto Test ==================== */
@@ -5956,15 +5643,16 @@ static void lan_tester_do_autotest(LanTesterApp* app) {
                 state = AutoTestStateIdle;
                 continue;
             }
-            app->dhcp_valid = false; /* force fresh DHCP */
+            app->dhcp_valid = false; /* force fresh network setup (DHCP or static) */
             dhcp_ok = lan_tester_ensure_dhcp(app);
             if(dhcp_ok) {
                 uint8_t pfx = arp_mask_to_prefix(app->dhcp_mask);
                 furi_string_cat_printf(
                     body,
-                    "DHCP: %d.%d.%d.%d/%d\n"
+                    "%s: %d.%d.%d.%d/%d\n"
                     "GW:   %d.%d.%d.%d\n"
                     "DNS:  %d.%d.%d.%d\n",
+                    app->net_static_enabled ? "Static" : "DHCP",
                     app->dhcp_ip[0],
                     app->dhcp_ip[1],
                     app->dhcp_ip[2],
@@ -5979,7 +5667,7 @@ static void lan_tester_do_autotest(LanTesterApp* app) {
                     app->dhcp_dns[2],
                     app->dhcp_dns[3]);
             } else {
-                furi_string_cat_str(body, "DHCP: FAIL\n");
+                furi_string_cat_str(body, app->net_static_enabled ? "Static IP: FAIL\n" : "DHCP: FAIL\n");
             }
             furi_string_set(app->autotest_text, "[Auto Test]\n");
             furi_string_cat(app->autotest_text, body);
@@ -6274,12 +5962,18 @@ static void lan_tester_do_file_manager(LanTesterApp* app) {
         return;
     }
 
-    /* Step 3: Run DHCP to get IP */
-    furi_string_set(out, "[File Manager]\nRunning DHCP...\n");
+    /* Step 3: Get an IP (DHCP lease or configured static IP) */
+    furi_string_set(
+        out,
+        app->net_static_enabled ? "[File Manager]\nApplying static IP...\n" :
+                                   "[File Manager]\nRunning DHCP...\n");
     lan_tester_update_view(app->text_box_tool, out);
 
     if(!lan_tester_ensure_dhcp(app)) {
-        furi_string_set(out, "[File Manager]\nDHCP failed!\n");
+        furi_string_set(
+            out,
+            app->net_static_enabled ? "[File Manager]\nStatic IP not set!\n" :
+                                       "[File Manager]\nDHCP failed!\n");
         return;
     }
 
@@ -6387,12 +6081,18 @@ static void lan_tester_do_pxe_download(LanTesterApp* app) {
         return;
     }
 
-    /* Step 3: Run DHCP */
-    furi_string_set(out, "[PXE Download]\nRunning DHCP...\n");
+    /* Step 3: Get an IP (DHCP lease or configured static IP) */
+    furi_string_set(
+        out,
+        app->net_static_enabled ? "[PXE Download]\nApplying static IP...\n" :
+                                   "[PXE Download]\nRunning DHCP...\n");
     lan_tester_update_view(app->text_box_tool, out);
 
     if(!lan_tester_ensure_dhcp(app)) {
-        furi_string_set(out, "[PXE Download]\nDHCP failed!\n");
+        furi_string_set(
+            out,
+            app->net_static_enabled ? "[PXE Download]\nStatic IP not set!\n" :
+                                       "[PXE Download]\nDHCP failed!\n");
         return;
     }
 

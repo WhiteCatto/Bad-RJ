@@ -1,3 +1,18 @@
+# 2.9.0 (Bad-RJ fork)
+
+## Added
+- **Static IP / Network Mode** — Settings now has a DHCP/Static toggle plus a "Static IP Config" wizard (IP → Mask → Gateway). In Static mode, tools that previously required a live DHCP server (ARP Scan, Ping, DNS Lookup, WoL, Traceroute, Ping Sweep, Discovery, Port Scan, Continuous Ping, File Manager, PXE Download) apply the configured address instantly instead of running a 15s DHCP handshake.
+
+## Removed
+- **PXE Server** — the built-in DHCP+TFTP boot server, its dedicated settings screen, and boot-file scanner state have been removed to reduce the app's persistent RAM footprint. **PXE Download** (fetching boot files from the internet) is unaffected and now launches directly from Utilities.
+
+## Changed
+- App renamed to **Bad-RJ** (`application.fam` display name; `appid` unchanged for settings compatibility).
+- Removed Russian-language documentation (`docs/ru/`, README RU section) — English only going forward.
+
+## Fixed
+- `settings_save()` could write past its buffer if the settings text ever exceeded 768 bytes (snprintf's return value was used unclamped as the write length). Now clamped defensively.
+
 # 2.8.0
 
 ## Added

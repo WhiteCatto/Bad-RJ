@@ -1,6 +1,6 @@
 App(
     appid="lan_tester",
-    name="LAN Tester",
+    name="Bad-RJ",
     apptype=FlipperAppType.EXTERNAL,
     entry_point="lan_tester_app",
     stack_size=4 * 1024,
@@ -8,8 +8,8 @@ App(
     fap_icon="assets/icon.png",
     fap_icon_assets="assets",
     fap_author="Dok2d",
-    fap_version="2.8.0",
-    fap_description="Portable LAN tester & security analyzer: ARP, ping, DHCP, LLDP/CDP, port scan, SNMP, NTP sync, IPMI, TFTP, PXE boot/download, 802.1X, VLAN, rogue DHCP/RA detection via W5500",
+    fap_version="2.9.0",
+    fap_description="Portable LAN tester & security analyzer: ARP, ping, DHCP, LLDP/CDP, port scan, SNMP, NTP sync, IPMI, TFTP, PXE download, 802.1X, VLAN, rogue DHCP/RA detection via W5500",
     fap_weburl="https://github.com/dok2d/fz-W5500-lan-analyse",
     sources=["*.c*", "!docs"],
     requires=[

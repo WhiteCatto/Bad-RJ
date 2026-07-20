@@ -319,7 +319,7 @@ The magic packet is sent as a broadcast UDP packet on port 9. The target machine
 
 ### Other Utilities
 
-- **[PXE Server](pxe-server.md)** -- network boot server with DHCP + TFTP
+- **PXE Download** -- fetch common PXE boot files (iPXE/EFI) to SD card for use with your own PXE/DHCP infrastructure
 - **[File Manager](file-manager.md)** -- web-based SD card management via HTTP
 
 ---

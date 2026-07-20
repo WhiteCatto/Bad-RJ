@@ -13,10 +13,12 @@
 #include <notification/notification_messages.h>
 #include "protocols/ping_graph.h"
 #include "protocols/history.h"
-#include "protocols/pxe_server.h"
 #include "bridge/eth_bridge.h"
 #include "bridge/pcap_dump.h"
 #include "ip_keyboard.h"
+
+/* PXE boot file path on SD card, used by the PXE Download tool */
+#define PXE_BOOT_DIR EXT_PATH("apps_data/lan_tester/pxe")
 
 /* Forward declarations */
 typedef struct LanTesterApp LanTesterApp;
@@ -36,8 +38,6 @@ typedef enum {
     LanTesterViewPortScanMode,
     LanTesterViewSettings,
     LanTesterViewEthBridge,
-    LanTesterViewPxeSettings,
-    LanTesterViewPxeHelp,
     LanTesterViewPacketCapture,
     LanTesterViewHostList,
     LanTesterViewHostActions,
@@ -72,7 +72,6 @@ typedef enum {
     LanTesterMenuItemHistory,
     LanTesterMenuItemAbout,
     LanTesterMenuItemEthBridge,
-    LanTesterMenuItemPxeServer,
     LanTesterMenuItemFileManager,
     LanTesterMenuItemPacketCapture,
     LanTesterMenuItemSnmpGet,
@@ -132,6 +131,14 @@ struct LanTesterApp {
     bool dns_custom_enabled; /* use custom DNS instead of DHCP */
     uint8_t dns_custom_server[4]; /* custom DNS IP (default 8.8.8.8) */
     char dns_custom_ip_input[16]; /* text input buffer for DNS IP */
+
+    /* Static IP settings — when enabled, tools use this instead of running DHCP */
+    bool net_static_enabled;
+    uint8_t static_ip[4];
+    uint8_t static_mask[4];
+    uint8_t static_gw[4];
+    char static_ip_edit_buf[16]; /* shared scratch buffer for the IP keyboard (IP/mask/gw wizard) */
+    uint8_t static_wizard_step; /* 0=IP, 1=mask, 2=gateway — drives the "Configure Static IP" wizard */
 
     /* Ping settings */
     uint8_t ping_count; /* packets for normal ping (1-100, default 4) */
@@ -207,29 +214,6 @@ struct LanTesterApp {
     /* ETH Bridge state */
     View* view_bridge;
     EthBridgeState* bridge_state;
-
-    /* PXE Server state */
-    TextBox* text_box_pxe_help;
-    VariableItemList* pxe_settings_list;
-    VariableItem* pxe_item_dhcp;
-    VariableItem* pxe_item_sip;
-    VariableItem* pxe_item_cip;
-    VariableItem* pxe_item_sub;
-    VariableItem* pxe_item_boot;
-
-    /* PXE settings (user-configurable) */
-    char pxe_server_ip_input[16]; /* "192.168.77.1" */
-    char pxe_client_ip_input[16]; /* "192.168.77.10" */
-    char pxe_subnet_input[16]; /* "255.255.255.0" */
-    bool pxe_dhcp_enabled; /* true = run DHCP server */
-    uint8_t pxe_server_ip[4]; /* parsed */
-    uint8_t pxe_client_ip[4]; /* parsed */
-    uint8_t pxe_subnet[4]; /* parsed */
-
-    /* PXE boot file selection */
-    PxeServerState pxe_scan; /* cached boot file scan results */
-    uint8_t pxe_boot_file_idx; /* currently selected boot file */
-    bool pxe_dhcp_probed; /* external DHCP already probed? */
 
     /* Discovered hosts from scans */
     Submenu* submenu_host_list;

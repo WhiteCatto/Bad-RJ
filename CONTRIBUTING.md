@@ -30,7 +30,7 @@ If you find a security vulnerability, please open a GitHub Issue with the `[SECU
 
 - `README.md` — if features table, usage guide, or architecture diagram are affected
 - `CHANGELOG.md` — add an entry under the appropriate section (Added/Changed/Fixed/Security)
-- `docs/en/README.md` and `docs/ru/README.md` — keep full documentation in sync with both languages
+- `docs/en/README.md` — keep full documentation in sync
 
 PRs without corresponding documentation updates will be asked to add them before merge.
 

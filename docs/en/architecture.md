@@ -37,8 +37,7 @@
 │   ├── discovery.c / .h        # mDNS + SSDP service discovery
 │   ├── stp_vlan.c / .h         # STP BPDU parser + 802.1Q VLAN tag extraction
 │   ├── mac_changer.c / .h      # MAC randomizer/setter with SD persistence
-│   ├── pxe_server.c / .h       # PXE boot server: DHCP responder + TFTP server
-│   ├── file_manager.c / .h     # HTTP server for SD card file management
+│   ├── │   ├── file_manager.c / .h     # HTTP server for SD card file management
 │   └── history.c / .h          # Timestamped result storage on SD card
 │
 ├── utils/
@@ -160,7 +159,7 @@ Main Menu
 │   └── Statistics
 ├── Utilities (submenu)
 │   ├── Wake-on-LAN
-│   ├── PXE Server
+│   ├── PXE Download
 │   └── File Manager
 ├── History
 └── Settings (includes About)

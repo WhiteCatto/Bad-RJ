@@ -45,13 +45,12 @@ Turn your **Flipper Zero + W5500** Ethernet module into a professional-grade por
 | 802.1X Probe | Security | EAPOL-Start probe, detect port authentication |
 | VLAN Hopping | Security | Test VLAN isolation (Top 10 / Custom VLANs) |
 | Wake-on-LAN | Utilities | Magic packet sender |
-| PXE Server | Utilities | Network boot server with DHCP + TFTP |
-| PXE Download | Utilities | Download iPXE/EFI boot files from the internet to SD card |
+| PXE Download | Utilities | Download iPXE/EFI boot files from the internet to SD card, for use with your own PXE/DHCP infrastructure |
 | File Manager | Utilities | Web-based SD card manager via HTTP, custom CSS/JS themes |
 | TFTP Client | Utilities | Download config files from network equipment |
 | IPMI Query | Utilities | BMC chassis status, device ID, firmware version |
 | History | -- | Timestamped auto-saved results, browsable and deletable |
-| Settings | -- | Auto-save, sound/vibro, custom DNS, ping config, target persistence, MAC Changer, About |
+| Settings | -- | Auto-save, sound/vibro, custom DNS, static IP / Network Mode, ping config, target persistence, MAC Changer, About |
 
 ## Documentation
 
@@ -62,7 +61,6 @@ Turn your **Flipper Zero + W5500** Ethernet module into a professional-grade por
 | **[Architecture & Internals](architecture.md)** | Project tree, socket allocation, threading, memory model |
 | **[Feature Guide](usage.md)** | Detailed per-feature documentation by menu category |
 | **[ETH Bridge](eth-bridge.md)** | USB-to-Ethernet bridging, PCAP recording, platform support |
-| **[PXE Server](pxe-server.md)** | Network boot setup, DHCP auto-detection, TFTP serving |
 | **[File Manager](file-manager.md)** | HTTP file server, auth tokens, browser-based SD management |
 | **[Security](security.md)** | Security model, per-component measures, reporting |
 | **[Troubleshooting](troubleshooting.md)** | Common problems, hardware limitations, third-party libraries |

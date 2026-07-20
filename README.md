@@ -1,6 +1,4 @@
-# Flipper Zero LAN Tester (W5500)
-
-> **[Русская версия ниже / Russian version below](#русская-версия)**
+# Bad-RJ — Flipper Zero LAN Tester (W5500)
 
 Turn your **Flipper Zero + W5500 Lite** module into a professional-grade portable LAN tester. Analyze Ethernet links, discover network neighbors, scan subnets, fingerprint DHCP servers --- all from a pocket-sized device.
 
@@ -8,9 +6,7 @@ Turn your **Flipper Zero + W5500 Lite** module into a professional-grade portabl
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Language](https://img.shields.io/badge/language-C99-green)
 ![Build](https://img.shields.io/badge/build-ufbt-yellow)
-![Version](https://img.shields.io/badge/version-2.7.0-brightgreen)
-
-**[English docs](docs/en/README.md)** | **[Документация на русском](docs/ru/README.md)**
+![Version](https://img.shields.io/badge/version-2.9.0-brightgreen)
 
 ![Main menu](docs/screenshots/main_menu.png)
 
@@ -37,8 +33,7 @@ Turn your **Flipper Zero + W5500 Lite** module into a professional-grade portabl
 | **Wake-on-LAN** | Send magic packets to any MAC address |
 | **Packet Capture** | Standalone PCAP traffic dump — capture raw Ethernet frames to .pcap file on SD card |
 | **ETH Bridge** | USB-to-Ethernet bridge: phone/PC gets LAN access via Flipper (CDC-ECM), optional PCAP traffic dump to SD card |
-| **PXE Server** | Minimal PXE boot server with built-in DHCP + TFTP, boots .kpxe/.efi files from SD card |
-| **PXE Download** | Download iPXE and EFI boot files from the internet directly to SD card for PXE Server |
+| **PXE Download** | Download iPXE and EFI boot files from the internet directly to SD card, for use with your own PXE/DHCP infrastructure |
 | **File Manager** | Web-based file manager: browse, download, upload, delete files on microSD via HTTP from any browser on the LAN. Supports custom CSS/JS themes from SD card |
 | **SNMP GET** | Query device info via SNMPv1/v2c: sysName, sysDescr, sysUpTime, ifOperStatus |
 | **NTP Diagnostics** | NTP server analysis: stratum, root delay/dispersion, reference ID, RTT, UTC time |
@@ -54,7 +49,7 @@ Turn your **Flipper Zero + W5500 Lite** module into a professional-grade portabl
 | **TFTP Client** | Download config files from network equipment via TFTP, save to SD card |
 | **IPMI v1.5** | Query BMC: chassis power status, device ID, firmware version |
 | **History** | All scan results auto-saved with timestamps, browsable and deletable |
-| **Settings** | Auto-save, sound/vibro, custom DNS, ping config, target persistence, MAC Changer |
+| **Settings** | Auto-save, sound/vibro, custom DNS, static IP / Network Mode config, ping config, target persistence, MAC Changer |
 
 ### UX Highlights
 
@@ -69,8 +64,12 @@ Turn your **Flipper Zero + W5500 Lite** module into a professional-grade portabl
 
 ### Required
 
-- **Flipper Zero** (OFW firmware)
+- **Flipper Zero** — Official firmware (OFW), confirmed working on release 1.4.3
 - **W5500 Lite** Ethernet module (or any W5500-based board with SPI)
+
+### Firmware Compatibility
+
+Built and tested against **Official Flipper firmware 1.4.3** (API 87.1). Custom firmware forks (e.g. Unleashed) use a different API level — if you build for one, `ufbt` must target that firmware's own SDK index or the `.fap` won't be recognized by the Apps menu.
 
 ### Where to buy
 
@@ -159,7 +158,6 @@ The compiled `.fap` file will appear in `dist/`. You can also copy it manually t
 │   ├── lldp.c / .h             # IEEE 802.1AB LLDP parser
 │   ├── cdp.c / .h              # Cisco Discovery Protocol parser
 │   ├── http_download.c / .h    # HTTP file downloader (for PXE boot files)
-│   ├── pxe_server.c / .h      # PXE boot server (DHCP + TFTP)
 │   ├── file_manager.c / .h    # Web-based SD card file manager (HTTP server)
 │   └── history.c / .h          # Timestamped result storage on SD card
 │
@@ -220,7 +218,7 @@ The compiled `.fap` file will appear in `dist/`. You can also copy it manually t
 - **VLAN Hop Custom** — test user-specified VLAN IDs (comma-separated).
 ### Utilities
 - **Wake-on-LAN** — send magic packet to wake a device by MAC address.
-- **PXE Server** — minimal PXE boot server with built-in DHCP + TFTP.
+- **PXE Download** — download common PXE boot files (iPXE/EFI) to SD card for use with your own PXE/DHCP infrastructure.
 - **File Manager** — web-based SD card file manager via HTTP on port 80.
 - **TFTP Client** — download config files from network equipment to SD card.
 - **IPMI Query** — query BMC chassis status, device ID, firmware version.
@@ -259,6 +257,7 @@ The built-in lookup table covers ~120 common OUI prefixes including:
 
 ## Credits
 
+- **Bad-RJ** is a fork of [dok2d/fz-W5500-lan-analyse](https://github.com/dok2d/fz-W5500-lan-analyse), maintained by [nullsp3ct0r](https://github.com/WhiteCatto)
 - Based on [arag0re/fz-eth-troubleshooter](https://github.com/arag0re/fz-eth-troubleshooter) (fork of [karasevia/finik_eth](https://github.com/karasevia/finik_eth))
 - Uses [WIZnet ioLibrary_Driver](https://github.com/Wiznet/ioLibrary_Driver) for W5500 hardware abstraction
 - Built for [Flipper Zero OFW](https://github.com/flipperdevices/flipperzero-firmware)
@@ -266,271 +265,3 @@ The built-in lookup table covers ~120 common OUI prefixes including:
 ## License
 
 MIT License. See [LICENSE](LICENSE) for details.
-
----
-
----
-
-# Русская версия
-
-# Flipper Zero LAN Тестер (W5500)
-
-Превратите **Flipper Zero + модуль W5500 Lite** в профессиональный портативный LAN-тестер. Анализ Ethernet-соединений, обнаружение сетевых соседей, сканирование подсетей, фингерпринтинг DHCP-серверов --- всё с устройства, помещающегося в карман.
-
----
-
-## Возможности
-
-| Функция | Описание |
-|---|---|
-| **Auto Test** | Автоматическая диагностика в одно касание: Link → DHCP → Ping GW → DNS → Internet Ping → LLDP/CDP → ARP. Автоцикл при перетыке кабеля. |
-| **Link Info** | Статус PHY-линка, скорость (10/100 Мбит/с), дуплекс, MAC-адрес, версия W5500 |
-| **DHCP Analyzer** | Анализ Discover/Offer (IP не берётся!), фингерпринтинг опций |
-| **ARP Scanner** | Сканирование подсети с определением вендора по OUI (~120 производителей) |
-| **Ping** | Echo Request/Reply на любой IP с измерением RTT (4 пинга, таймаут 3с) |
-| **Continuous Ping** | Графики RTT в реальном времени с min/max/avg и процентом потерь |
-| **DNS Lookup** | Разрешение имён через UDP DNS сервер из DHCP |
-| **Traceroute** | ICMP трассировка маршрута с RTT на каждый хоп |
-| **Ping Sweep** | ICMP-сканирование всей подсети, CIDR автоопределяется из DHCP |
-| **Port Scanner** | TCP connect-сканирование: Top-20 (быстро) и Top-100 (полно) |
-| **LLDP/CDP** | Пассивное обнаружение соседей IEEE 802.1AB и Cisco CDP |
-| **mDNS/SSDP** | Обнаружение сервисов через multicast DNS и UPnP/SSDP |
-| **STP/VLAN** | Пассивный захват BPDU + определение 802.1Q VLAN-тегов |
-| **Статистика** | Счётчики фреймов по типу и EtherType |
-| **Wake-on-LAN** | Отправка magic-пакетов на любой MAC-адрес |
-| **ETH Bridge** | USB-Ethernet мост: телефон/ПК получает доступ в LAN через Flipper (CDC-ECM), опциональный PCAP-дамп трафика на SD |
-| **PXE Server** | Минимальный PXE-сервер с DHCP + TFTP, загрузка .kpxe/.efi файлов с SD-карты |
-| **PXE Download** | Скачивание iPXE и EFI boot-файлов из интернета на SD-карту для PXE Server |
-| **File Manager** | Веб-менеджер файлов: просмотр, скачивание, загрузка, удаление файлов на microSD через HTTP. Поддержка кастомных CSS/JS тем с SD-карты |
-| **SNMP GET** | Запрос информации об устройстве по SNMPv1/v2c: sysName, sysDescr, sysUpTime, ifStatus |
-| **NTP Diagnostics** | Анализ NTP-сервера: stratum, root delay/dispersion, reference ID, RTT, UTC-время |
-| **Apply NTP Sync** | Применение NTP-времени из последнего NTP Diagnostics к часам Flipper |
-| **NetBIOS Query** | Обнаружение имён Windows-машин, рабочих групп и MAC-адресов |
-| **DNS Poison Check** | Сравнение локального и публичного DNS (8.8.8.8) для обнаружения подмены |
-| **ARP Watch** | Пассивный мониторинг ARP: обнаружение спуфинга, дубликатов IP, ARP-штормов |
-| **Rogue DHCP** | Отправка Discover, сбор Offer от нескольких серверов, обнаружение неавторизованных DHCP |
-| **Rogue RA** | Прослушивание IPv6 Router Advertisement, обнаружение неавторизованных роутеров |
-| **DHCP Fingerprint** | Определение ОС клиентов по DHCP option 55 (Windows, Linux, macOS, Android и др.) |
-| **802.1X Probe** | Отправка EAPOL-Start для проверки 802.1X аутентификации на порту |
-| **VLAN Hopping** | Отправка 802.1Q tagged-фреймов для проверки изоляции VLAN (Top 10 / Custom) |
-| **TFTP Client** | Скачивание конфигурационных файлов с оборудования по TFTP на SD-карту |
-| **IPMI v1.5** | Запрос BMC: статус питания шасси, ID устройства, версия прошивки |
-| **История** | Все результаты автосохраняются с метками времени, просмотр и удаление |
-| **Настройки** | Автосохранение, звук/вибрация, DNS, пинг, сохранение целей, MAC Changer |
-
-### UX-особенности
-
-- **Иерархическое меню**: функции сгруппированы в Port Info, Scan, Diagnostics, Traffic, Security, Utilities
-- **Статус линка в заголовке**: UP/DOWN, скорость, дуплекс видны сразу
-- **Кеширование DHCP**: одна DHCP-сессия на всё — не ждёте 15 секунд каждый раз
-- **Визуальный прогресс**: таймеры обратного отсчёта для прослушиваний, прогрессбары для сканов
-- **LED/вибро оповещения**: зелёный при успехе, красный при ошибке (опционально)
-- **Умные дефолты**: IP-поля предзаполнены шлюзом из DHCP, последние цели запоминаются между сессиями
-
-## Оборудование
-
-### Необходимо
-
-- **Flipper Zero** (официальная прошивка OFW)
-- **W5500 Lite** Ethernet-модуль (или любая плата на W5500 с SPI)
-
-### Где купить
-
-- [W5500 Ethernet модуль для Flipper Zero](https://flipperaddons.com/product/w5500-ethernet/) — готовый модуль с RJ45
-
-### Подключение
-
-```
-Модуль W5500     GPIO Flipper Zero
-─────────────    ─────────────────
-MOSI (MO)    →    A7  (пин 2)
-SCLK (SCK)   →    B3  (пин 5)
-CS   (nSS)   →    A4  (пин 4)
-MISO (MI)    →    A6  (пин 3)
-RESET (RST)  →    C3  (пин 7)
-3V3  (VCC)   →    3V3 (пин 9)
-GND  (G)     →    GND (пин 8 или 11)
-```
-
-> W5500 питается через OTG 3.3В Flipper'а, который включается автоматически при запуске приложения.
-
-## Сборка
-
-### Требования
-
-- [ufbt](https://github.com/flipperdevices/flipperzero-ufbt) (micro Flipper Build Tool)
-
-### Сборка и установка
-
-```bash
-cd lan_tester
-ufbt build              # только сборка
-ufbt launch             # сборка и запуск на Flipper через USB
-ufbt install            # установка .fap на SD-карту Flipper
-```
-
-Скомпилированный `.fap` файл появится в `dist/`. Его также можно скопировать вручную на SD-карту Flipper'а в `/ext/apps/GPIO/`.
-
-## Архитектура
-
-```
-├── application.fam              # Манифест FAP
-├── lan_tester_app.c             # Точка входа, ViewDispatcher, логика функций
-├── lan_tester_app.h             # Общие типы и состояние приложения
-│
-├── hal/                         # Hardware Abstraction Layer
-│   ├── w5500_hal.c              # SPI, GPIO, управление MACRAW-сокетом
-│   └── w5500_hal.h
-│
-├── usb_eth/                     # USB CDC-ECM сетевое устройство
-│   ├── usb_eth.c / .h           # Инициализация/деинит/отправка/приём
-│   └── usb_descriptors.c / .h   # USB-дескрипторы, обработчики endpoints
-│
-├── bridge/                      # Движок Ethernet-моста
-│   ├── eth_bridge.c             # Двунаправленная L2-пересылка фреймов
-│   ├── eth_bridge.h
-│   ├── pcap_dump.c              # PCAP-дамп трафика на SD (совместим с Wireshark)
-│   └── pcap_dump.h
-│
-├── protocols/                   # Парсеры и генераторы протоколов (29 файлов)
-│   ├── arp_scan.c / .h         # ARP-запросы и парсер ответов
-│   ├── arp_watch.c / .h        # Обнаружение ARP-спуфинга
-│   ├── cdp.c / .h              # Парсер Cisco CDP (LLC/SNAP)
-│   ├── dhcp_discover.c / .h    # DHCP Discover/Offer
-│   ├── dhcp_fingerprint.c / .h # Фингерпринт ОС по DHCP option 55
-│   ├── discovery.c / .h        # mDNS + SSDP обнаружение
-│   ├── dns_lookup.c / .h       # DNS A-запросы через UDP
-│   ├── dns_poison.c / .h       # Проверка подмены DNS
-│   ├── eapol_probe.c / .h      # 802.1X EAPOL-Start проба
-│   ├── icmp.c / .h             # ICMP Echo (ping)
-│   ├── ipmi_client.c / .h      # IPMI v1.5 over LAN
-│   ├── lldp.c / .h             # Парсер IEEE 802.1AB LLDP
-│   ├── netbios_query.c / .h    # NetBIOS Name Query (NBSTAT)
-│   ├── ntp_diag.c / .h         # NTP-диагностика
-│   ├── port_scan.c / .h        # TCP connect сканер портов
-│   ├── radius_client.c / .h    # RADIUS Access-Request (PAP/MD5)
-│   ├── rogue_dhcp.c / .h       # Обнаружение Rogue DHCP
-│   ├── rogue_ra.c / .h         # Обнаружение Rogue RA (IPv6)
-│   ├── snmp_client.c / .h      # SNMP v1/v2c GET (BER/ASN.1)
-│   ├── stp_vlan.c / .h         # STP BPDU + 802.1Q VLAN
-│   ├── tftp_client.c / .h      # TFTP-клиент (RFC 1350)
-│   ├── traceroute.c / .h       # ICMP traceroute с TTL
-│   ├── vlan_hop.c / .h         # VLAN hopping (802.1Q tagged)
-│   ├── wol.c / .h              # Wake-on-LAN magic packet
-│   ├── ping_graph.c / .h       # Кольцевой буфер RTT
-│   ├── mac_changer.c / .h      # Смена MAC с сохранением на SD
-│   ├── pxe_server.c / .h       # PXE-сервер (DHCP + TFTP)
-│   ├── file_manager.c / .h     # Веб-менеджер файлов (HTTP)
-│   └── history.c / .h          # Хранение результатов на SD
-│
-├── utils/
-│   ├── oui_lookup.c / .h       # MAC → Вендор (~120 OUI-префиксов)
-│   └── packet_utils.c / .h     # Байтовый порядок, контрольные суммы
-│
-├── assets/
-│   └── icon.png                 # Иконка FAP 10x10
-│
-└── lib/
-    └── ioLibrary_Driver/        # Драйвер WIZnet W5500
-```
-
-## Использование
-
-1. Подключите модуль W5500 к Flipper Zero по схеме выше
-2. Вставьте Ethernet-кабель в RJ45 разъём W5500
-3. Откройте **GPIO → LAN Tester** на Flipper'е
-4. В заголовке меню отображается статус линка (напр. `LAN [UP 100M FD]`)
-5. Выберите категорию, затем инструмент:
-
-### Port Info
-- **Link Info** — статус линка, скорость, дуплекс, MAC.
-- **DHCP Analyze** — Discover/Offer без занятия адреса.
-- **LLDP/CDP** — пассивное обнаружение соседей (до 60с).
-- **STP/VLAN** — BPDU + определение 802.1Q VLAN-тегов.
-- **SNMP GET** — sysName, sysDescr, sysUpTime, ifStatus по SNMPv1/v2c.
-
-### Scan
-- **ARP Scan** — сканирование подсети, IP/MAC/вендор.
-- **Ping Sweep** — ICMP-свип по CIDR.
-- **mDNS/SSDP** — обнаружение сервисов через multicast DNS и UPnP.
-- **NetBIOS Query** — имена Windows-машин и рабочие группы.
-- **Port Scan (Top 20/100/Custom)** — TCP connect-сканирование.
-
-### Diagnostics
-- **Ping** — пинг на любой IP (по умолчанию — шлюз).
-- **Continuous Ping** — график RTT с отслеживанием потерь.
-- **DNS Lookup** — разрешение имён через DNS.
-- **Traceroute** — ICMP-трассировка до 30 хопов.
-- **NTP Diagnostics** — stratum, root delay, reference ID, RTT, UTC-время и расхождение.
-- **Apply NTP Sync** — применение NTP-времени к часам Flipper (сначала запустите NTP Diagnostics).
-- **DNS Poison Check** — сравнение локального и публичного DNS.
-
-### Traffic
-- **Packet Capture** — захват фреймов в .pcap на SD.
-- **ETH Bridge** — USB-Ethernet мост (CDC-ECM) с опциональным PCAP-дампом.
-- **Statistics** — счётчики фреймов по типам (10с).
-
-### Security
-- **ARP Watch** — обнаружение спуфинга, дубликатов IP, ARP-штормов (15с).
-- **Rogue DHCP** — обнаружение неавторизованных DHCP-серверов.
-- **Rogue RA (IPv6)** — обнаружение неавторизованных Router Advertisement (15с).
-- **DHCP Fingerprint** — определение ОС клиентов по option 55 (30с).
-- **802.1X Probe** — EAPOL-Start, обнаружение аутентификации и типа EAP.
-- **VLAN Hop Top10** — проверка изоляции на VLANs 1,2,10,20,50,100,150,200,300,999.
-- **VLAN Hop Custom** — проверка произвольных VLAN ID (через запятую).
-
-### Utilities
-- **Wake-on-LAN** — magic-пакет для пробуждения устройства.
-- **PXE Server** — PXE-сервер с DHCP + TFTP.
-- **File Manager** — веб-менеджер SD через HTTP.
-- **TFTP Client** — скачивание конфигов с оборудования на SD.
-- **IPMI Query** — статус шасси BMC, ID устройства, версия прошивки.
-
-### Settings
-- **Auto-save results** — вкл/выкл автосохранение.
-- **Sound & vibro** — вкл/выкл LED/вибро.
-- **Clear History** — удалить все результаты.
-- **MAC Changer** — генерация/ввод MAC, сохранение на SD.
-- **Сохранение целей** — последний IP/hostname для каждого инструмента сохраняется в settings.conf.
-
-### Кастомные темы File Manager
-
-File Manager поддерживает пользовательские CSS и JavaScript с SD-карты:
-
-- **apps_data/lan_tester/web/custom.css** --- заменяет стандартные стили
-- **apps_data/lan_tester/web/custom.js** --- заменяет стандартный скрипт сортировки
-
-Файлы обнаруживаются при запуске File Manager. Для применения изменений перезапустите инструмент.
-
-Примеры тем и расширенный custom.js (поиск, хлебные крошки, мультивыбор, drag-and-drop загрузка, просмотр файлов) находятся в **docs/filemanager_themes/**. Скопируйте нужный файл по указанному пути на SD-карту.
-
-## Технические детали
-
-- **W5500 MACRAW режим**: Socket 0 с `MFEN=0` (принимает все фреймы)
-- **Worker thread**: 8 КБ стек, неблокирующий UI через ViewDispatcher + worker
-- **Кеширование DHCP**: одна сессия, результат переиспользуется всеми операциями
-- **Безопасность памяти**: буферы в куче, frame_buf в куче (стек приложения 4 КБ)
-- **Порядок байтов**: ручной парсинг big-endian — нет float printf, нет `htons`/`ntohs`
-
-## База данных OUI-вендоров
-
-Встроенная таблица покрывает ~120 распространённых OUI-префиксов:
-
-> Cisco, HP/HPE, Dell, Intel, Broadcom, Realtek, Apple, Samsung, Huawei, TP-Link, Ubiquiti, Juniper, Arista, MikroTik, Netgear, ASUS, D-Link, Synology, QNAP, VMware, Microsoft, Google, Amazon, Lenovo, Supermicro, Aruba, Fortinet, Palo Alto, WIZnet, Raspberry Pi, Espressif и другие.
-
-## Что нельзя реализовать на Flipper + W5500
-
-- **802.1X** --- нужен полноценный supplicant, не хватит RAM
-- **Полный Wireshark-захват на 100 Мбит** --- SPI ограничивает пропускную способность; PCAP-дамп в режиме ETH Bridge записывает трафик, реально проходящий через мост
-- **SNMP-запросы** --- ASN.1 парсер слишком тяжёл для RAM
-- **TLS/HTTPS** --- нет криптобиблиотек в FAP SDK
-
-## Благодарности
-
-- Основано на [arag0re/fz-eth-troubleshooter](https://github.com/arag0re/fz-eth-troubleshooter) (форк [karasevia/finik_eth](https://github.com/karasevia/finik_eth))
-- Использует [WIZnet ioLibrary_Driver](https://github.com/Wiznet/ioLibrary_Driver) для работы с W5500
-- Создано для [Flipper Zero OFW](https://github.com/flipperdevices/flipperzero-firmware)
-
-## Лицензия
-
-MIT License. Подробности в файле [LICENSE](LICENSE).
