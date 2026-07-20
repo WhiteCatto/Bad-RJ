@@ -1,0 +1,26 @@
+# Build artifacts
+dist/
+build/
+*.fap
+*.elf
+*.map
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ufbt
+.ufbt/
+
+# Claude Code
+.claude/
+
+# Python venv
+.venv/
+
+# OS files
+.DS_Store
+Thumbs.db
