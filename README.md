@@ -176,7 +176,7 @@ The compiled `.fap` file will appear in `dist/`. You can also copy it manually t
 
 1. Connect the W5500 module to Flipper Zero using the wiring diagram above
 2. Plug an Ethernet cable into the W5500's RJ45 port
-3. Open **GPIO → LAN Tester** on the Flipper
+3. Open **GPIO → bad-rj** on the Flipper
 4. The menu header shows link status (e.g. `LAN [UP 100M FD]`)
 5. Select a category and then a tool:
 
