@@ -50,7 +50,7 @@ Turn your **Flipper Zero + W5500 Lite** module into a professional-grade portabl
 | **TFTP Client** | Download config files from network equipment via TFTP, save to SD card |
 | **IPMI v1.5** | Query BMC: chassis power status, device ID, firmware version |
 | **History** | All scan results auto-saved with timestamps, browsable and deletable |
-| **Settings** | Auto-save, sound/vibro, custom DNS, static IP / Network Mode config, ping config, target persistence, MAC Changer |
+| **Settings** | Auto-save, sound/vibro, custom DNS, Network Mode (DHCP/Static/Dynamic), ping config, target persistence, MAC Changer |
 
 ### UX Highlights
 
@@ -190,6 +190,7 @@ The compiled `.fap` file will appear in `dist/`. You can also copy it manually t
 
 ### Scan
 - **ARP Scan** — scans local subnet via DHCP-detected range, shows IP/MAC/vendor.
+- **ARP Scan (Passive)** — listens for existing ARP traffic instead of probing; needs no IP configured, scales to huge subnets (e.g. APIPA /16), suggests a likely-free static IP.
 - **Ping Sweep** — ICMP sweep of a CIDR range, auto-detected or manually entered.
 - **mDNS/SSDP** — discovers services via multicast DNS and UPnP.
 - **NetBIOS Query** — discover Windows machine names and workgroups.
@@ -227,6 +228,7 @@ The compiled `.fap` file will appear in `dist/`. You can also copy it manually t
 ### Settings
 - **Auto-save results** — ON/OFF, controls automatic history saving.
 - **Sound & vibro** — ON/OFF, controls LED/vibro notifications.
+- **Network Mode** — DHCP (default), Static (manual IP/mask/gateway via a guided wizard), or Dynamic (derives a usable IP with no DHCP server by passively skimming ARP traffic and verifying a candidate address is free with a real duplicate-check probe).
 - **Clear History** — delete all saved result files.
 - **MAC Changer** — generate random MAC or enter custom, saved to SD.
 - **Target persistence** — last-used IP/hostname per tool saved to settings.conf, restored on next launch.
@@ -258,7 +260,7 @@ The built-in lookup table covers ~120 common OUI prefixes including:
 
 ## Credits
 
-- **Bad-RJ** is a fork of [dok2d/fz-W5500-lan-analyse](https://github.com/dok2d/fz-W5500-lan-analyse), maintained by nullsp3ct0r and [WhiteCatto](https://github.com/WhiteCatto)
+- **Bad-RJ** is a fork of [dok2d/fz-W5500-lan-analyse](https://github.com/dok2d/fz-W5500-lan-analyse), maintained by [nullsp3ct0r](https://github.com/nullsp3ct0r) and [WhiteCatto](https://github.com/WhiteCatto)
 - Custom "Hacker Detective" loading screen (`hacker_gui.c`) by [WhiteCatto](https://github.com/WhiteCatto)
 - Based on [arag0re/fz-eth-troubleshooter](https://github.com/arag0re/fz-eth-troubleshooter) (fork of [karasevia/finik_eth](https://github.com/karasevia/finik_eth))
 - Uses [WIZnet ioLibrary_Driver](https://github.com/Wiznet/ioLibrary_Driver) for W5500 hardware abstraction

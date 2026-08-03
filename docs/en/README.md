@@ -23,6 +23,7 @@ Turn your **Flipper Zero + W5500** Ethernet module into a professional-grade por
 | LLDP/CDP | Port Info | Passive IEEE 802.1AB and Cisco CDP neighbor discovery |
 | STP/VLAN | Port Info | BPDU listener and 802.1Q VLAN tag detection |
 | ARP Scanner | Scan | Subnet scan with OUI vendor lookup (~120 vendors) |
+| ARP Scanner (Passive) | Scan | Listens for existing ARP traffic instead of probing; no IP needed, scales to huge subnets |
 | Ping Sweep | Scan | ICMP sweep of entire CIDR range with interactive host list |
 | mDNS/SSDP | Scan | Multicast DNS and UPnP service discovery |
 | Port Scanner | Scan | TCP connect scan: Top-20, Top-100, or custom range |
@@ -50,7 +51,7 @@ Turn your **Flipper Zero + W5500** Ethernet module into a professional-grade por
 | TFTP Client | Utilities | Download config files from network equipment |
 | IPMI Query | Utilities | BMC chassis status, device ID, firmware version |
 | History | -- | Timestamped auto-saved results, browsable and deletable |
-| Settings | -- | Auto-save, sound/vibro, custom DNS, static IP / Network Mode, ping config, target persistence, MAC Changer, About |
+| Settings | -- | Auto-save, sound/vibro, custom DNS, Network Mode (DHCP/Static/Dynamic), ping config, target persistence, MAC Changer, About |
 
 ## Documentation
 
