@@ -1,6 +1,6 @@
-# Flipper Zero LAN Tester (W5500) -- Documentation
+# Bad-RJ (W5500) -- Documentation
 
-Turn your **Flipper Zero + W5500** Ethernet module into a professional-grade portable LAN tester. Analyze links, discover network neighbors, scan subnets, fingerprint DHCP servers, capture packets, bridge USB to Ethernet, PXE-boot machines, and manage SD card files over HTTP -- all from a pocket-sized device.
+Turn your **Flipper Zero + W5500** Ethernet module into a professional-grade portable LAN tester. Analyze links, discover network neighbors, scan subnets, fingerprint DHCP servers, capture packets, bridge USB to Ethernet, fetch PXE boot files, and manage SD card files over HTTP -- all from a pocket-sized device.
 
 ## Key Highlights
 

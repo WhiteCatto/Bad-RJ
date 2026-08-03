@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for your interest in contributing to the Flipper Zero LAN Tester!
+Thank you for your interest in contributing to Bad-RJ!
 
 ## Building
 

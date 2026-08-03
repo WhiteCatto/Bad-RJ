@@ -1,8 +1,8 @@
-# CLAUDE.md — Agent Guidelines for fz-W5500-lan-analyse
+# CLAUDE.md — Agent Guidelines for Bad-RJ
 
 ## Project
 
-Flipper Zero LAN Tester — portable Ethernet analyzer & security toolkit using W5500 SPI module. C99, ufbt build system, ~130 KB heap, 4 KB stack.
+Bad-RJ (fork of fz-W5500-lan-analyse) — portable Ethernet analyzer & security toolkit using W5500 SPI module. C99, ufbt build system, ~130 KB heap, 4 KB stack.
 
 ## Hardware Platform
 
