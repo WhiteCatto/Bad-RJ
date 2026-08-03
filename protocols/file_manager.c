@@ -1204,8 +1204,15 @@ void file_manager_poll(FileManagerState* state, uint8_t* buf, uint16_t buf_size)
     case SOCK_ESTABLISHED:
         handle_connection(FILEMGR_HTTP_SOCKET, buf, buf_size, state);
         /* Graceful close: FIN lets the browser read the full response.
-         * RST (close) would discard unread data in the browser's buffer. */
-        disconnect(FILEMGR_HTTP_SOCKET);
+         * RST (close) would discard unread data in the browser's buffer.
+         *
+         * Send the DISCON command directly (setSn_CR) instead of calling
+         * the vendored disconnect() wrapper, which blocks indefinitely
+         * waiting for SOCK_CLOSED — it only escapes via Sn_IR_TIMEOUT,
+         * which isn't guaranteed to fire, and a stuck call here hangs the
+         * whole worker thread with no way to recover short of a reset.
+         * The bounded wait below is what actually keeps this safe. */
+        setSn_CR(FILEMGR_HTTP_SOCKET, Sn_CR_DISCON);
         /* Brief wait for FIN handshake (typically <5ms on LAN) */
         {
             uint32_t dstart = furi_get_tick();
@@ -1224,7 +1231,19 @@ void file_manager_poll(FileManagerState* state, uint8_t* buf, uint16_t buf_size)
         break;
 
     case SOCK_CLOSE_WAIT:
-        disconnect(FILEMGR_HTTP_SOCKET);
+        /* Same reasoning as above — non-blocking DISCON, bounded wait,
+         * force close rather than risking an indefinite hang. */
+        setSn_CR(FILEMGR_HTTP_SOCKET, Sn_CR_DISCON);
+        {
+            uint32_t dstart = furi_get_tick();
+            while(furi_get_tick() - dstart < 100) {
+                if(getSn_SR(FILEMGR_HTTP_SOCKET) == SOCK_CLOSED) break;
+                furi_delay_ms(1);
+            }
+        }
+        if(getSn_SR(FILEMGR_HTTP_SOCKET) != SOCK_CLOSED) {
+            close(FILEMGR_HTTP_SOCKET);
+        }
         break;
 
     case SOCK_CLOSED:

@@ -80,8 +80,11 @@ PortState port_scan_tcp(
     }
 
 done:
-    /* Disconnect and close */
-    disconnect(socket_num);
+    /* Hard close only — no data to preserve here, and disconnect() blocks
+     * indefinitely waiting for a graceful FIN if the peer never completes
+     * the handshake (only escapes via Sn_IR_TIMEOUT, which isn't
+     * guaranteed to fire for a socket that was never fully established).
+     * That's what caused scans to become unrecoverable without a reset. */
     close(socket_num);
 
     return result;

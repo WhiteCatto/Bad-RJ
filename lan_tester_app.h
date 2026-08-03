@@ -89,7 +89,15 @@ typedef enum {
     LanTesterMenuItemTftpClient,
     LanTesterMenuItemIpmiClient,
     LanTesterMenuItemPxeDownload,
+    LanTesterMenuItemArpScanPassive,
 } LanTesterMenuItem;
+
+/* Network addressing mode — see lan_tester_ensure_dhcp() */
+typedef enum {
+    LanTesterNetModeDhcp = 0,
+    LanTesterNetModeStatic = 1,
+    LanTesterNetModeDynamic = 2, /* derived via passive ARP skim + duplicate-check probe */
+} LanTesterNetMode;
 
 /* Packet statistics counters */
 typedef struct {
@@ -132,8 +140,8 @@ struct LanTesterApp {
     uint8_t dns_custom_server[4]; /* custom DNS IP (default 8.8.8.8) */
     char dns_custom_ip_input[16]; /* text input buffer for DNS IP */
 
-    /* Static IP settings — when enabled, tools use this instead of running DHCP */
-    bool net_static_enabled;
+    /* Network mode: DHCP / Static / Dynamic — see LanTesterNetMode */
+    uint8_t net_mode;
     uint8_t static_ip[4];
     uint8_t static_mask[4];
     uint8_t static_gw[4];

@@ -20,6 +20,7 @@ Turn your **Flipper Zero + W5500 Lite** module into a professional-grade portabl
 | **Link Info** | PHY link status, speed (10/100 Mbps), duplex (Half/Full), MAC address, W5500 version check |
 | **DHCP Analyzer** | Discover-only analysis (no IP lease taken), option fingerprinting, full offer parsing |
 | **ARP Scanner** | Active subnet scan with batch requests, OUI vendor lookup (~120 vendors), duplicate detection |
+| **ARP Scanner (Passive)** | Listens for existing ARP traffic instead of probing — works with no IP configured, scales to huge subnets (e.g. APIPA /16), suggests a likely-free static IP |
 | **Ping** | Echo request/reply to any IP with configurable count and timeout |
 | **Continuous Ping** | Real-time RTT graph with min/max/avg and packet loss, configurable interval |
 | **DNS Lookup** | Resolve hostnames via UDP DNS, supports custom DNS server |

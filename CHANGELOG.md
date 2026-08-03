@@ -1,7 +1,9 @@
 # 2.9.0 (Bad-RJ fork)
 
 ## Added
-- **Static IP / Network Mode** — Settings now has a DHCP/Static toggle plus a "Static IP Config" wizard (IP → Mask → Gateway). In Static mode, tools that previously required a live DHCP server (ARP Scan, Ping, DNS Lookup, WoL, Traceroute, Ping Sweep, Discovery, Port Scan, Continuous Ping, File Manager, PXE Download) apply the configured address instantly instead of running a 15s DHCP handshake.
+- **Static IP / Network Mode** — Settings now has a DHCP/Static/Dynamic toggle plus a "Static IP Config" wizard (IP → Mask → Gateway). In Static mode, tools that previously required a live DHCP server (ARP Scan, Ping, DNS Lookup, WoL, Traceroute, Ping Sweep, Discovery, Port Scan, Continuous Ping, File Manager, PXE Download) apply the configured address instantly instead of running a 15s DHCP handshake.
+- **Network Mode: Dynamic** — derives a usable IP with no DHCP server and no manual configuration: passively listens for ARP traffic to learn the subnet and what's already in use, then verifies a candidate address is actually free with a real duplicate-check ARP probe (RFC 5227 style) before claiming it. Cached after the first successful derivation, same as DHCP/Static.
+- **ARP Scan (Passive)** — new tool under Scan that listens for existing ARP traffic (requests, replies, gratuitous ARPs, APIPA duplicate-address probes) instead of actively probing every address. Needs no IP configured at all, scales to huge subnets (e.g. APIPA's /16, where active scanning would take hours), and suggests a likely-free static IP based on what it observed.
 
 ## Removed
 - **PXE Server** — the built-in DHCP+TFTP boot server, its dedicated settings screen, and boot-file scanner state have been removed to reduce the app's persistent RAM footprint. **PXE Download** (fetching boot files from the internet) is unaffected and now launches directly from Utilities.
@@ -12,6 +14,8 @@
 
 ## Fixed
 - `settings_save()` could write past its buffer if the settings text ever exceeded 768 bytes (snprintf's return value was used unclamped as the write length). Now clamped defensively.
+- **Port Scan could hang forever, requiring a physical device reset** — it called the vendored WIZnet `disconnect()`, which blocks indefinitely waiting for a graceful FIN close and only escapes via an `Sn_IR_TIMEOUT` interrupt that isn't guaranteed to fire (e.g. scanning a filtered port that never completed a real handshake). Replaced with a hard `close()`, which doesn't wait on the remote peer at all. **File Manager's HTTP server had the identical latent bug** in two spots (same blocking `disconnect()` call) — fixed the same way, sending the DISCON command directly and using the bounded wait-then-force-close logic that was already there but unreachable while the blocking call sat in front of it.
+- **Interrupting a running scan (ARP Scan, ARP Scan Passive, Ping Sweep) with Back could require two presses and briefly flash a blank screen** — the scan's own "Done" summary was unconditionally overwriting the "Stopped by user." message the moment the worker thread noticed it should stop, and could still fire a surprise navigation to Discovered Hosts right as the user was trying to leave. Now skipped entirely when the user interrupted the scan.
 
 # 2.8.0
 

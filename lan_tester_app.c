@@ -3,6 +3,7 @@
 #include "protocols/lldp.h"
 #include "protocols/cdp.h"
 #include "protocols/arp_scan.h"
+#include "protocols/arp_scan_passive.h"
 #include "protocols/dhcp_discover.h"
 #include "protocols/icmp.h"
 #include "protocols/dns_lookup.h"
@@ -292,7 +293,7 @@ static void lan_tester_settings_load(LanTesterApp* app) {
     app->dns_custom_server[2] = 8;
     app->dns_custom_server[3] = 8;
     strncpy(app->dns_custom_ip_input, "8.8.8.8", sizeof(app->dns_custom_ip_input));
-    app->net_static_enabled = false;
+    app->net_mode = LanTesterNetModeDhcp;
     app->static_ip[0] = 192;
     app->static_ip[1] = 168;
     app->static_ip[2] = 1;
@@ -356,7 +357,15 @@ static void lan_tester_settings_load(LanTesterApp* app) {
             app->dns_custom_server,
             app->dns_custom_ip_input,
             sizeof(app->dns_custom_ip_input));
-        if(strstr(buf, "net_static=1")) app->net_static_enabled = true;
+        {
+            char* nm = strstr(buf, "net_mode=");
+            if(nm) {
+                int v = atoi(nm + 9);
+                if(v >= LanTesterNetModeDhcp && v <= LanTesterNetModeDynamic) {
+                    app->net_mode = (uint8_t)v;
+                }
+            }
+        }
         {
             /* Scratch buffer discarded after parsing — only the parsed octets are kept */
             char tmp[16];
@@ -472,7 +481,7 @@ static void lan_tester_settings_save(LanTesterApp* app) {
             buf,
             768,
             "autosave=%d\nsound=%d\ndns_custom=%d\ndns_ip=%s\n"
-            "net_static=%d\nstatic_ip=%d.%d.%d.%d\nstatic_mask=%d.%d.%d.%d\n"
+            "net_mode=%d\nstatic_ip=%d.%d.%d.%d\nstatic_mask=%d.%d.%d.%d\n"
             "static_gw=%d.%d.%d.%d\n"
             "ping_count=%d\nping_timeout=%d\nping_interval=%d\n"
             "autotest_dns=%s\nautotest_lldp_wait=%d\nautotest_arp=%d\n"
@@ -486,7 +495,7 @@ static void lan_tester_settings_save(LanTesterApp* app) {
             app->setting_sound ? 1 : 0,
             app->dns_custom_enabled ? 1 : 0,
             app->dns_custom_ip_input,
-            app->net_static_enabled ? 1 : 0,
+            app->net_mode,
             app->static_ip[0],
             app->static_ip[1],
             app->static_ip[2],
@@ -576,6 +585,7 @@ static bool lan_tester_check_dhcp(LanTesterApp* app);
 static void lan_tester_do_link_info(LanTesterApp* app);
 static void lan_tester_do_lldp_cdp(LanTesterApp* app);
 static void lan_tester_do_arp_scan(LanTesterApp* app);
+static void lan_tester_do_arp_scan_passive(LanTesterApp* app);
 static void lan_tester_do_dhcp_analyze(LanTesterApp* app);
 static void lan_tester_do_ping(LanTesterApp* app);
 static void lan_tester_do_stats(LanTesterApp* app);
@@ -1298,13 +1308,13 @@ static void settings_dns_custom_changed(VariableItem* item) {
     }
 }
 
-static const char* const net_mode_options[] = {"DHCP", "Static"};
+static const char* const net_mode_options[] = {"DHCP", "Static", "Dynamic"};
 
 static void settings_net_static_changed(VariableItem* item) {
     uint8_t idx = variable_item_get_current_value_index(item);
     variable_item_set_current_value_text(item, net_mode_options[idx]);
     if(g_app) {
-        g_app->net_static_enabled = (idx == 1);
+        g_app->net_mode = idx;
         /* Force a fresh network setup next time a tool runs */
         g_app->dhcp_valid = false;
         lan_tester_settings_save(g_app);
@@ -1658,6 +1668,12 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         app->submenu_cat_scan,
         "ARP Scan",
         LanTesterMenuItemArpScan,
+        lan_tester_submenu_callback,
+        app);
+    submenu_add_item(
+        app->submenu_cat_scan,
+        "ARP Scan (Passive)",
+        LanTesterMenuItemArpScanPassive,
         lan_tester_submenu_callback,
         app);
     submenu_add_item(
@@ -2023,7 +2039,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         "Ethernet analyzer &\n"
         "security toolkit for\n"
         "Flipper Zero + W5500.\n"
-        "34 tools: scan, ping,\n"
+        "35 tools: scan, ping,\n"
         "SNMP, DHCP, LLDP/CDP,\n"
         "802.1X, VLAN, IPMI,\n"
         "TFTP, NTP,\n"
@@ -2062,9 +2078,9 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         variable_item_list_add(app->settings_list, "DNS Server", 0, NULL, app);
     variable_item_set_current_value_text(item_dns_ip, app->dns_custom_ip_input);
 
-    /* Network Mode: DHCP / Static (index 4) */
+    /* Network Mode: DHCP / Static / Dynamic (index 4) */
     VariableItem* item_net_static = variable_item_list_add(
-        app->settings_list, "Network Mode", 2, settings_net_static_changed, app);
+        app->settings_list, "Network Mode", 3, settings_net_static_changed, app);
 
     /* Static IP config (index 5) — opens a 3-step wizard (IP -> Mask -> Gateway)
      * that reuses a single ip_keyboard + scratch buffer. Only used when Network
@@ -2126,9 +2142,8 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     variable_item_set_current_value_text(
         item_dns_custom, setting_onoff[app->dns_custom_enabled ? 1 : 0]);
     variable_item_set_current_value_text(item_dns_ip, app->dns_custom_ip_input);
-    variable_item_set_current_value_index(item_net_static, app->net_static_enabled ? 1 : 0);
-    variable_item_set_current_value_text(
-        item_net_static, net_mode_options[app->net_static_enabled ? 1 : 0]);
+    variable_item_set_current_value_index(item_net_static, app->net_mode);
+    variable_item_set_current_value_text(item_net_static, net_mode_options[app->net_mode]);
 
     /* Ping count: index = count - 1 */
     variable_item_set_current_value_index(item_ping_count, app->ping_count - 1);
@@ -2439,6 +2454,10 @@ static int32_t lan_tester_worker_fn(void* context) {
         lan_tester_do_arp_scan(app);
         lan_tester_update_view(app->text_box_tool, app->tool_text);
         break;
+    case LanTesterMenuItemArpScanPassive:
+        lan_tester_do_arp_scan_passive(app);
+        lan_tester_update_view(app->text_box_tool, app->tool_text);
+        break;
     case LanTesterMenuItemDhcpAnalyze:
         lan_tester_do_dhcp_analyze(app);
         lan_tester_update_view(app->text_box_tool, app->tool_text);
@@ -2660,8 +2679,115 @@ static bool lan_tester_ensure_w5500(LanTesterApp* app) {
 /* ==================== Shared DHCP helper ==================== */
 
 /**
- * Ensure we have a valid network address (either a DHCP lease or the
- * user-configured static IP). Returns true if dhcp_valid.
+ * Derive a usable IP for Dynamic mode with no DHCP server involved:
+ * 1. Passively listen for ARP traffic to learn what's already on the link
+ *    (same technique as ARP Scan Passive) — no IP needs to be configured
+ *    to do this, MACRAW capture works regardless.
+ * 2. Pick a candidate address the listen didn't see in use, inferring the
+ *    subnet mask from what was observed (APIPA link-local -> /16, else /24).
+ * 3. Send a real duplicate-check ARP probe for that candidate (sender IP
+ *    0.0.0.0, per RFC 5227) and confirm silence before claiming it — up
+ *    to 5 attempts, moving on to a different candidate if one answers.
+ * On success, populates app->dhcp_ip/mask/gw/dns, applies it to the W5500,
+ * and sets app->dhcp_valid = true (same cache the DHCP/Static paths use).
+ */
+static bool lan_tester_derive_dynamic_ip(LanTesterApp* app) {
+    if(!w5500_hal_open_macraw()) return false;
+
+    ArpPassiveState pstate;
+    if(!arp_scan_passive_init(&pstate, ARP_PASSIVE_MAX_HOSTS)) {
+        w5500_hal_close_macraw();
+        return false;
+    }
+
+    /* Listen window: learn the subnet + who's already on it. */
+    uint32_t start_tick = furi_get_tick();
+    while(app->worker_running && (furi_get_tick() - start_tick) < 8000) {
+        uint16_t recv_len = w5500_hal_macraw_recv(app->frame_buf, FRAME_BUF_SIZE);
+        if(recv_len > 0) {
+            arp_scan_passive_process_frame(&pstate, app->frame_buf, recv_len);
+        }
+        furi_delay_ms(1);
+    }
+
+    if(pstate.count == 0) {
+        /* No ARP traffic seen at all — nothing to derive a subnet from. */
+        arp_scan_passive_free(&pstate);
+        w5500_hal_close_macraw();
+        return false;
+    }
+
+    /* Mask heuristic: APIPA link-local traffic implies /16, else /24. */
+    uint8_t mask[4];
+    if(pstate.hosts[0].ip[0] == 169 && pstate.hosts[0].ip[1] == 254) {
+        mask[0] = 255;
+        mask[1] = 255;
+        mask[2] = 0;
+        mask[3] = 0;
+    } else {
+        mask[0] = 255;
+        mask[1] = 255;
+        mask[2] = 255;
+        mask[3] = 0;
+    }
+
+    uint8_t candidate[4] = {0, 0, 0, 0};
+    bool claimed = false;
+
+    for(uint8_t attempt = 0; attempt < 5 && !claimed && app->worker_running; attempt++) {
+        if(!arp_scan_passive_suggest_ip(
+               &pstate, pstate.hosts[0].ip, mask, furi_get_tick() + attempt, candidate)) {
+            break; /* subnet exhausted — extremely unlikely */
+        }
+
+        /* Duplicate-check probe: sender IP 0.0.0.0 (RFC 5227), asking "who
+         * has candidate?". No reply within ~1s means it's free. */
+        uint8_t probe[42];
+        uint8_t zero_ip[4] = {0, 0, 0, 0};
+        arp_build_request(probe, app->mac_addr, zero_ip, candidate);
+        w5500_hal_macraw_send(probe, 42);
+
+        bool taken = false;
+        uint32_t probe_start = furi_get_tick();
+        while((furi_get_tick() - probe_start) < 1000) {
+            uint16_t recv_len = w5500_hal_macraw_recv(app->frame_buf, FRAME_BUF_SIZE);
+            if(recv_len > 0) {
+                uint8_t reply_mac[6], reply_ip[4];
+                if(arp_parse_reply(app->frame_buf, recv_len, reply_mac, reply_ip) &&
+                   memcmp(reply_ip, candidate, 4) == 0) {
+                    taken = true;
+                    /* Record it as known-taken so the next attempt skips it */
+                    arp_scan_passive_process_frame(&pstate, app->frame_buf, recv_len);
+                    break;
+                }
+            }
+            furi_delay_ms(1);
+        }
+
+        if(!taken) claimed = true;
+    }
+
+    arp_scan_passive_free(&pstate);
+    w5500_hal_close_macraw();
+
+    if(!claimed) return false;
+
+    memcpy(app->dhcp_ip, candidate, 4);
+    memcpy(app->dhcp_mask, mask, 4);
+    /* No real gateway exists in a derived link-local scenario; placeholder
+     * only, same as Static mode's gateway field. */
+    memcpy(app->dhcp_gw, candidate, 4);
+    app->dhcp_gw[3] = 1;
+    memcpy(app->dhcp_dns, app->dhcp_gw, 4);
+
+    w5500_hal_set_net_info(app->dhcp_ip, app->dhcp_mask, app->dhcp_gw, app->dhcp_dns);
+    app->dhcp_valid = true;
+    return true;
+}
+
+/**
+ * Ensure we have a valid network address (DHCP lease, user-configured
+ * static IP, or a derived Dynamic IP). Returns true if dhcp_valid.
  * Uses cached result if available; only runs DHCP once per session
  * (or after link state change).
  */
@@ -2678,7 +2804,7 @@ static bool lan_tester_ensure_dhcp(LanTesterApp* app) {
 
     /* Static IP mode: apply the configured address directly, no DHCP handshake
      * (and no dependency on a DHCP server being reachable at all). */
-    if(app->net_static_enabled) {
+    if(app->net_mode == LanTesterNetModeStatic) {
         if(!(app->static_ip[0] | app->static_ip[1] | app->static_ip[2] | app->static_ip[3])) {
             /* No static IP configured yet — nothing to apply */
             if(app->setting_sound) notification_message(app->notifications, &sequence_error);
@@ -2695,7 +2821,18 @@ static bool lan_tester_ensure_dhcp(LanTesterApp* app) {
         return true;
     }
 
-    /* Use cached DHCP if available */
+    /* Dynamic IP mode: derive an address once (passive ARP skim + a real
+     * duplicate-check probe), then cache it like DHCP so later tool
+     * launches on this session are instant, not another 8-9s derivation. */
+    if(app->net_mode == LanTesterNetModeDynamic && !app->dhcp_valid) {
+        if(!lan_tester_derive_dynamic_ip(app)) {
+            if(app->setting_sound) notification_message(app->notifications, &sequence_error);
+            return false;
+        }
+        return true;
+    }
+
+    /* Use cached DHCP/Dynamic result if available */
     if(app->dhcp_valid) {
         /* Re-apply cached network config to W5500 */
         wiz_NetInfo net_info;
@@ -2776,14 +2913,38 @@ static bool lan_tester_check_w5500(LanTesterApp* app) {
  * Ensure DHCP (includes W5500+link). Sets diagnostic error in tool_text on failure.
  * Does NOT reset tool_text — caller may have set a "loading" message before this.
  */
+/* Status line shown before lan_tester_ensure_dhcp() starts (re)acquiring
+ * a network address — mode-specific so the user knows what's happening. */
+static const char* lan_tester_net_connecting_text(LanTesterApp* app) {
+    switch(app->net_mode) {
+    case LanTesterNetModeStatic:
+        return "Applying static IP...\n";
+    case LanTesterNetModeDynamic:
+        return "Deriving dynamic IP...\n";
+    default:
+        return "Getting IP via DHCP...\n";
+    }
+}
+
+/* Error line shown when lan_tester_ensure_dhcp() fails, mode-specific. */
+static const char* lan_tester_net_failed_text(LanTesterApp* app) {
+    switch(app->net_mode) {
+    case LanTesterNetModeStatic:
+        return "Static IP not set!\n(Settings>Static IP)\n";
+    case LanTesterNetModeDynamic:
+        return "Dynamic IP failed!\n(no ARP traffic seen)\n";
+    default:
+        return "DHCP failed.\n";
+    }
+}
+
 static bool lan_tester_check_dhcp(LanTesterApp* app) {
     if(!lan_tester_ensure_dhcp(app)) {
         furi_string_set(
             app->tool_text,
             !app->w5500_initialized      ? "W5500 Not Found!\n" :
             !w5500_hal_get_link_status() ? "No Link!\nConnect cable.\n" :
-            app->net_static_enabled      ? "Static IP not set!\n(Settings>Static IP)\n" :
-                                           "DHCP failed.\n");
+                                           lan_tester_net_failed_text(app));
         return false;
     }
     return true;
@@ -3304,6 +3465,17 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
             app->tool_text,
             "Initializing W5500...\n");
         lan_tester_worker_start(app, LanTesterMenuItemArpScan, LanTesterViewToolResult);
+        break;
+
+    case LanTesterMenuItemArpScanPassive:
+        app->tool_back_view = LanTesterViewCatScan;
+        lan_tester_show_view(
+            app,
+            app->text_box_tool,
+            LanTesterViewToolResult,
+            app->tool_text,
+            "Initializing W5500...\n");
+        lan_tester_worker_start(app, LanTesterMenuItemArpScanPassive, LanTesterViewToolResult);
         break;
 
     case LanTesterMenuItemDhcpAnalyze:
@@ -4014,7 +4186,7 @@ static void lan_tester_do_arp_scan(LanTesterApp* app) {
     furi_string_reset(app->tool_text);
 
     furi_string_set(
-        app->tool_text, app->net_static_enabled ? "Applying static IP...\n" : "Getting IP via DHCP...\n");
+        app->tool_text, lan_tester_net_connecting_text(app));
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
     if(!lan_tester_check_dhcp(app)) return;
@@ -4155,6 +4327,12 @@ static void lan_tester_do_arp_scan(LanTesterApp* app) {
     scan_results_close_writer();
     free(dedup_ips);
 
+    /* If the user pressed Back, lan_tester_nav_back_tool() already wrote
+     * "Stopped by user." and is handling navigation — don't overwrite that
+     * with a Done summary or fire a surprise navigation to Discovered
+     * Hosts while they're mid-exit. */
+    if(!app->worker_running) return;
+
     uint32_t elapsed_ms = furi_get_tick() - scan_start_tick;
 
     /* Summary only — full host list available in Discovered Hosts */
@@ -4177,7 +4355,154 @@ static void lan_tester_do_arp_scan(LanTesterApp* app) {
     lan_tester_save_and_notify(app, "arp_scan.txt", app->tool_text);
     furi_string_reset(app->tool_text);
 
-    /* Show interactive host list if hosts were found (even if scan was interrupted) */
+    /* Show interactive host list if hosts were found */
+    if(app->discovered_host_count > 0) {
+        view_dispatcher_send_custom_event(app->view_dispatcher, CUSTOM_EVENT_SHOW_HOST_LIST);
+    }
+}
+
+/* ==================== ARP Scan (Passive) ==================== */
+
+#define ARP_PASSIVE_DURATION_MS 20000
+
+/*
+ * Listens for ARP traffic already on the wire instead of actively probing.
+ * Needs no IP configured at all — MACRAW capture works regardless of the
+ * chip's own address — so unlike active ARP Scan this works before any
+ * DHCP/static IP setup, and scales to huge subnets (e.g. APIPA's /16)
+ * since it never enumerates a range.
+ */
+static void lan_tester_do_arp_scan_passive(LanTesterApp* app) {
+    furi_string_reset(app->tool_text);
+
+    if(!lan_tester_check_w5500(app)) return;
+
+    if(!w5500_hal_get_link_status()) {
+        furi_string_set(app->tool_text, "No Link!\nConnect cable.\n");
+        return;
+    }
+
+    if(!w5500_hal_open_macraw()) {
+        furi_string_set(app->tool_text, "Failed to open\nMACRAW!\n");
+        return;
+    }
+
+    ArpPassiveState pstate;
+    if(!arp_scan_passive_init(&pstate, ARP_PASSIVE_MAX_HOSTS)) {
+        furi_string_set(app->tool_text, "Memory alloc failed!\n");
+        w5500_hal_close_macraw();
+        return;
+    }
+
+    uint32_t start_tick = furi_get_tick();
+    uint32_t last_ui_tick = 0;
+
+    while(app->worker_running &&
+          (furi_get_tick() - start_tick) < ARP_PASSIVE_DURATION_MS) {
+        uint16_t recv_len = w5500_hal_macraw_recv(app->frame_buf, FRAME_BUF_SIZE);
+        if(recv_len > 0) {
+            arp_scan_passive_process_frame(&pstate, app->frame_buf, recv_len);
+        }
+
+        uint32_t now = furi_get_tick();
+        if(now - last_ui_tick >= 500) {
+            last_ui_tick = now;
+            uint32_t remaining_s = (ARP_PASSIVE_DURATION_MS - (now - start_tick)) / 1000;
+            furi_string_printf(
+                app->tool_text,
+                "[Passive ARP Scan]\nListening... %lus left\nHosts seen: %d\n",
+                (unsigned long)remaining_s,
+                pstate.count);
+            lan_tester_update_view(app->text_box_tool, app->tool_text);
+        }
+
+        furi_delay_ms(1);
+    }
+
+    w5500_hal_close_macraw();
+
+    /* If the user pressed Back, lan_tester_nav_back_tool() already wrote
+     * "Stopped by user." and is handling navigation — don't overwrite that
+     * or fire a surprise navigation to Discovered Hosts while mid-exit. */
+    if(!app->worker_running) {
+        arp_scan_passive_free(&pstate);
+        return;
+    }
+
+    furi_string_printf(
+        app->tool_text,
+        "[Passive ARP Scan] Done\nARP packets: %d\nHosts found: %d\n",
+        pstate.total_seen,
+        pstate.count);
+
+    if(pstate.count == 0) {
+        furi_string_cat(app->tool_text, "No ARP traffic seen.\n");
+    } else {
+        scan_results_clear();
+        app->discovered_host_count = 0;
+        app->host_list_page = 0;
+        scan_results_open_writer();
+
+        furi_string_cat(app->tool_text, "\n");
+        for(uint16_t i = 0; i < pstate.count; i++) {
+            ArpPassiveHost* host = &pstate.hosts[i];
+            scan_results_add(host->ip, host->mac);
+            app->discovered_host_count++;
+            furi_string_cat_printf(
+                app->tool_text,
+                "%d.%d.%d.%d %02X:%02X:%02X:%02X:%02X:%02X\n",
+                host->ip[0],
+                host->ip[1],
+                host->ip[2],
+                host->ip[3],
+                host->mac[0],
+                host->mac[1],
+                host->mac[2],
+                host->mac[3],
+                host->mac[4],
+                host->mac[5]);
+        }
+
+        scan_results_close_writer();
+
+        /* Suggest a free static IP based on what we observed. Heuristic:
+         * APIPA link-local traffic implies a /16, everything else /24. */
+        uint8_t mask[4];
+        if(pstate.hosts[0].ip[0] == 169 && pstate.hosts[0].ip[1] == 254) {
+            mask[0] = 255;
+            mask[1] = 255;
+            mask[2] = 0;
+            mask[3] = 0;
+        } else {
+            mask[0] = 255;
+            mask[1] = 255;
+            mask[2] = 255;
+            mask[3] = 0;
+        }
+
+        uint8_t suggested[4];
+        if(arp_scan_passive_suggest_ip(
+               &pstate, pstate.hosts[0].ip, mask, furi_get_tick(), suggested)) {
+            furi_string_cat_printf(
+                app->tool_text,
+                "\nSuggested free IP:\n%d.%d.%d.%d / %d.%d.%d.%d\n"
+                "(not verified free - probe\nbefore using!)\n",
+                suggested[0],
+                suggested[1],
+                suggested[2],
+                suggested[3],
+                mask[0],
+                mask[1],
+                mask[2],
+                mask[3]);
+        }
+    }
+
+    arp_scan_passive_free(&pstate);
+
+    lan_tester_save_and_notify(app, "arp_scan_passive.txt", app->tool_text);
+    furi_string_reset(app->tool_text);
+
     if(app->discovered_host_count > 0) {
         view_dispatcher_send_custom_event(app->view_dispatcher, CUSTOM_EVENT_SHOW_HOST_LIST);
     }
@@ -4288,7 +4613,7 @@ static void lan_tester_do_ping(LanTesterApp* app) {
     furi_string_reset(app->tool_text);
 
     furi_string_set(
-        app->tool_text, app->net_static_enabled ? "Applying static IP...\n" : "Getting IP via DHCP...\n");
+        app->tool_text, lan_tester_net_connecting_text(app));
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
     if(!lan_tester_check_dhcp(app)) return;
@@ -4333,7 +4658,7 @@ static void lan_tester_do_dns_lookup(LanTesterApp* app) {
     furi_string_reset(app->tool_text);
 
     furi_string_set(
-        app->tool_text, app->net_static_enabled ? "Applying static IP...\n" : "Getting IP via DHCP...\n");
+        app->tool_text, lan_tester_net_connecting_text(app));
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
     if(!lan_tester_check_dhcp(app)) return;
@@ -4382,7 +4707,7 @@ static void lan_tester_do_wol(LanTesterApp* app) {
     furi_string_reset(app->tool_text);
 
     furi_string_set(
-        app->tool_text, app->net_static_enabled ? "Applying static IP...\n" : "Getting IP via DHCP...\n");
+        app->tool_text, lan_tester_net_connecting_text(app));
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
     if(!lan_tester_check_dhcp(app)) return;
@@ -4451,7 +4776,7 @@ static void lan_tester_do_traceroute(LanTesterApp* app) {
     furi_string_reset(app->tool_text);
 
     furi_string_set(
-        app->tool_text, app->net_static_enabled ? "Applying static IP...\n" : "Getting IP via DHCP...\n");
+        app->tool_text, lan_tester_net_connecting_text(app));
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
     if(!lan_tester_check_dhcp(app)) return;
@@ -4548,7 +4873,7 @@ static void lan_tester_do_ping_sweep_detect(LanTesterApp* app) {
     furi_string_reset(app->tool_text);
 
     furi_string_set(
-        app->tool_text, app->net_static_enabled ? "Applying static IP...\n" : "Getting IP via DHCP...\n");
+        app->tool_text, lan_tester_net_connecting_text(app));
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
     if(!lan_tester_check_dhcp(app)) {
@@ -4580,7 +4905,7 @@ static void lan_tester_do_ping_sweep(LanTesterApp* app) {
     furi_string_reset(app->tool_text);
 
     furi_string_set(
-        app->tool_text, app->net_static_enabled ? "Applying static IP...\n" : "Getting IP via DHCP...\n");
+        app->tool_text, lan_tester_net_connecting_text(app));
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
     if(!lan_tester_check_dhcp(app)) return;
@@ -4703,6 +5028,11 @@ static void lan_tester_do_ping_sweep(LanTesterApp* app) {
 
     scan_results_close_writer();
 
+    /* If the user pressed Back, lan_tester_nav_back_tool() already wrote
+     * "Stopped by user." and is handling navigation — don't overwrite that
+     * or fire a surprise navigation to Discovered Hosts while mid-exit. */
+    if(!app->worker_running) return;
+
     /* Final results */
     furi_string_printf(
         app->tool_text,
@@ -4733,7 +5063,7 @@ static void lan_tester_do_discovery(LanTesterApp* app) {
     furi_string_reset(app->tool_text);
 
     furi_string_set(
-        app->tool_text, app->net_static_enabled ? "Applying static IP...\n" : "Getting IP via DHCP...\n");
+        app->tool_text, lan_tester_net_connecting_text(app));
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
     if(!lan_tester_check_dhcp(app)) return;
@@ -5089,7 +5419,7 @@ static void lan_tester_do_port_scan(LanTesterApp* app) {
     furi_string_reset(app->tool_text);
 
     furi_string_set(
-        app->tool_text, app->net_static_enabled ? "Applying static IP...\n" : "Getting IP via DHCP...\n");
+        app->tool_text, lan_tester_net_connecting_text(app));
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
     if(!lan_tester_check_dhcp(app)) return;
@@ -5653,7 +5983,7 @@ static void lan_tester_do_autotest(LanTesterApp* app) {
                     "%s: %d.%d.%d.%d/%d\n"
                     "GW:   %d.%d.%d.%d\n"
                     "DNS:  %d.%d.%d.%d\n",
-                    app->net_static_enabled ? "Static" : "DHCP",
+                    net_mode_options[app->net_mode],
                     app->dhcp_ip[0],
                     app->dhcp_ip[1],
                     app->dhcp_ip[2],
@@ -5668,7 +5998,7 @@ static void lan_tester_do_autotest(LanTesterApp* app) {
                     app->dhcp_dns[2],
                     app->dhcp_dns[3]);
             } else {
-                furi_string_cat_str(body, app->net_static_enabled ? "Static IP: FAIL\n" : "DHCP: FAIL\n");
+                furi_string_cat_printf(body, "%s: FAIL\n", net_mode_options[app->net_mode]);
             }
             furi_string_set(app->autotest_text, "[Auto Test]\n");
             furi_string_cat(app->autotest_text, body);
@@ -5963,18 +6293,12 @@ static void lan_tester_do_file_manager(LanTesterApp* app) {
         return;
     }
 
-    /* Step 3: Get an IP (DHCP lease or configured static IP) */
-    furi_string_set(
-        out,
-        app->net_static_enabled ? "[File Manager]\nApplying static IP...\n" :
-                                   "[File Manager]\nRunning DHCP...\n");
+    /* Step 3: Get an IP (DHCP lease, static, or derived Dynamic IP) */
+    furi_string_printf(out, "[File Manager]\n%s", lan_tester_net_connecting_text(app));
     lan_tester_update_view(app->text_box_tool, out);
 
     if(!lan_tester_ensure_dhcp(app)) {
-        furi_string_set(
-            out,
-            app->net_static_enabled ? "[File Manager]\nStatic IP not set!\n" :
-                                       "[File Manager]\nDHCP failed!\n");
+        furi_string_printf(out, "[File Manager]\n%s", lan_tester_net_failed_text(app));
         return;
     }
 
@@ -6082,18 +6406,12 @@ static void lan_tester_do_pxe_download(LanTesterApp* app) {
         return;
     }
 
-    /* Step 3: Get an IP (DHCP lease or configured static IP) */
-    furi_string_set(
-        out,
-        app->net_static_enabled ? "[PXE Download]\nApplying static IP...\n" :
-                                   "[PXE Download]\nRunning DHCP...\n");
+    /* Step 3: Get an IP (DHCP lease, static, or derived Dynamic IP) */
+    furi_string_printf(out, "[PXE Download]\n%s", lan_tester_net_connecting_text(app));
     lan_tester_update_view(app->text_box_tool, out);
 
     if(!lan_tester_ensure_dhcp(app)) {
-        furi_string_set(
-            out,
-            app->net_static_enabled ? "[PXE Download]\nStatic IP not set!\n" :
-                                       "[PXE Download]\nDHCP failed!\n");
+        furi_string_printf(out, "[PXE Download]\n%s", lan_tester_net_failed_text(app));
         return;
     }
 
