@@ -90,6 +90,7 @@ typedef enum {
     LanTesterMenuItemIpmiClient,
     LanTesterMenuItemPxeDownload,
     LanTesterMenuItemArpScanPassive,
+    LanTesterMenuItemPingTestHost,
 } LanTesterMenuItem;
 
 /* Network addressing mode — see lan_tester_ensure_dhcp() */
@@ -147,6 +148,10 @@ struct LanTesterApp {
     uint8_t static_gw[4];
     char static_ip_edit_buf[16]; /* shared scratch buffer for the IP keyboard (IP/mask/gw wizard) */
     uint8_t static_wizard_step; /* 0=IP, 1=mask, 2=gateway — drives the "Configure Static IP" wizard */
+
+    /* Fixed test host for one-tap repeat pinging (Diagnostics > Ping Test Host) */
+    uint8_t ping_test_host[4];
+    char ping_test_host_input[16];
 
     /* Ping settings */
     uint8_t ping_count; /* packets for normal ping (1-100, default 4) */

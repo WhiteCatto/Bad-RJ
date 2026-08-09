@@ -306,6 +306,7 @@ static void lan_tester_settings_load(LanTesterApp* app) {
     app->static_gw[1] = 168;
     app->static_gw[2] = 1;
     app->static_gw[3] = 1;
+    app->ping_test_host_input[0] = '\0';
     app->ping_count = 4;
     app->ping_timeout_ms = 3000;
     app->ping_interval_ms = 1000;
@@ -373,6 +374,12 @@ static void lan_tester_settings_load(LanTesterApp* app) {
             settings_parse_ip(buf, "static_mask=", app->static_mask, tmp, sizeof(tmp));
             settings_parse_ip(buf, "static_gw=", app->static_gw, tmp, sizeof(tmp));
         }
+        settings_parse_ip(
+            buf,
+            "ping_test_host=",
+            app->ping_test_host,
+            app->ping_test_host_input,
+            sizeof(app->ping_test_host_input));
         char* pc = strstr(buf, "ping_count=");
         if(pc) {
             int val = atoi(pc + 11);
@@ -483,6 +490,7 @@ static void lan_tester_settings_save(LanTesterApp* app) {
             "autosave=%d\nsound=%d\ndns_custom=%d\ndns_ip=%s\n"
             "net_mode=%d\nstatic_ip=%d.%d.%d.%d\nstatic_mask=%d.%d.%d.%d\n"
             "static_gw=%d.%d.%d.%d\n"
+            "ping_test_host=%s\n"
             "ping_count=%d\nping_timeout=%d\nping_interval=%d\n"
             "autotest_dns=%s\nautotest_lldp_wait=%d\nautotest_arp=%d\n"
             "mac=%02X:%02X:%02X:%02X:%02X:%02X\n"
@@ -508,6 +516,7 @@ static void lan_tester_settings_save(LanTesterApp* app) {
             app->static_gw[1],
             app->static_gw[2],
             app->static_gw[3],
+            app->ping_test_host_input,
             app->ping_count,
             app->ping_timeout_ms,
             app->ping_interval_ms,
@@ -588,6 +597,7 @@ static void lan_tester_do_arp_scan(LanTesterApp* app);
 static void lan_tester_do_arp_scan_passive(LanTesterApp* app);
 static void lan_tester_do_dhcp_analyze(LanTesterApp* app);
 static void lan_tester_do_ping(LanTesterApp* app);
+static void lan_tester_do_ping_test_host(LanTesterApp* app);
 static void lan_tester_do_stats(LanTesterApp* app);
 static void lan_tester_do_dns_lookup(LanTesterApp* app);
 static void lan_tester_do_wol(LanTesterApp* app);
@@ -1396,6 +1406,14 @@ static void dns_custom_ip_input_callback(void* context) {
     view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewSettings);
 }
 
+static void ping_test_host_input_callback(void* context) {
+    LanTesterApp* app = context;
+    furi_assert(app);
+    lan_tester_parse_ip(app->ping_test_host_input, app->ping_test_host);
+    lan_tester_settings_save(app);
+    view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewSettings);
+}
+
 /* Static IP setup wizard: one shared VariableItem walks IP -> Mask -> Gateway
  * using a single ip_keyboard instance and a single shared scratch buffer,
  * instead of 3 separate persistent Settings entries. */
@@ -1478,15 +1496,16 @@ typedef enum {
     LanTesterSettingsItemDnsServer = 3,
     LanTesterSettingsItemNetStatic = 4,
     LanTesterSettingsItemStaticConfig = 5,
-    LanTesterSettingsItemPingCount = 6,
-    LanTesterSettingsItemPingTimeout = 7,
-    LanTesterSettingsItemPingInterval = 8,
-    LanTesterSettingsItemClearHistory = 9,
-    LanTesterSettingsItemMacChanger = 10,
-    LanTesterSettingsItemAutoTestDnsHost = 11,
-    LanTesterSettingsItemAutoTestLldpWait = 12,
-    LanTesterSettingsItemAutoTestArpScan = 13,
-    LanTesterSettingsItemAbout = 14,
+    LanTesterSettingsItemPingTestHost = 6,
+    LanTesterSettingsItemPingCount = 7,
+    LanTesterSettingsItemPingTimeout = 8,
+    LanTesterSettingsItemPingInterval = 9,
+    LanTesterSettingsItemClearHistory = 10,
+    LanTesterSettingsItemMacChanger = 11,
+    LanTesterSettingsItemAutoTestDnsHost = 12,
+    LanTesterSettingsItemAutoTestLldpWait = 13,
+    LanTesterSettingsItemAutoTestArpScan = 14,
+    LanTesterSettingsItemAbout = 15,
     LanTesterSettingsItemCount,
 } LanTesterSettingsItem;
 
@@ -1506,6 +1525,18 @@ static void settings_enter_callback(void* context, uint32_t index) {
         view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
     } else if(index == LanTesterSettingsItemStaticConfig) {
         static_ip_wizard_open(app, 0);
+    } else if(index == LanTesterSettingsItemPingTestHost) {
+        ip_keyboard_setup(
+            app->ip_keyboard,
+            "Test Host IP:",
+            app->ping_test_host_input,
+            false,
+            ping_test_host_input_callback,
+            app,
+            app->ping_test_host_input,
+            sizeof(app->ping_test_host_input),
+            lan_tester_nav_back_settings);
+        view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
     } else if(index == LanTesterSettingsItemClearHistory) {
         /* Delete all .txt files from history dir without loading full list into RAM */
         Storage* storage = furi_record_open(RECORD_STORAGE);
@@ -1575,8 +1606,18 @@ static uint32_t lan_tester_nav_back_settings(void* context) {
  * generic tool worker/TextBox and has no PXE-Server dependency. */
 
 static LanTesterApp* lan_tester_app_alloc(void) {
+    FURI_LOG_I(
+        TAG,
+        "Heap at alloc: free=%zu max_block=%zu sizeof(LanTesterApp)=%zu",
+        memmgr_get_free_heap(),
+        memmgr_heap_get_max_free_block(),
+        sizeof(LanTesterApp));
+
     LanTesterApp* app = malloc(sizeof(LanTesterApp));
-    if(!app) return NULL;
+    if(!app) {
+        FURI_LOG_E(TAG, "malloc(LanTesterApp) failed");
+        return NULL;
+    }
     memset(app, 0, sizeof(LanTesterApp));
     g_app = app;
 
@@ -1704,6 +1745,12 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     app->submenu_cat_diag = submenu_alloc();
     submenu_add_item(
         app->submenu_cat_diag, "Ping", LanTesterMenuItemPing, lan_tester_submenu_callback, app);
+    submenu_add_item(
+        app->submenu_cat_diag,
+        "Ping Test Host",
+        LanTesterMenuItemPingTestHost,
+        lan_tester_submenu_callback,
+        app);
     submenu_add_item(
         app->submenu_cat_diag,
         "Continuous Ping",
@@ -2089,7 +2136,13 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         variable_item_list_add(app->settings_list, "Static IP Config", 0, NULL, app);
     variable_item_set_current_value_text(item_static_cfg, "Press OK");
 
-    /* Ping count (index 6) — 1..100 */
+    /* Test Host IP (index 6) — fixed target for Diagnostics > Ping Test Host,
+     * a one-tap repeat-ping shortcut with no IP entry step each time. */
+    VariableItem* item_ping_test_host =
+        variable_item_list_add(app->settings_list, "Test Host IP", 0, NULL, app);
+    variable_item_set_current_value_text(item_ping_test_host, app->ping_test_host_input);
+
+    /* Ping count (index 7) — 1..100 */
     VariableItem* item_ping_count = variable_item_list_add(
         app->settings_list, "Ping Count", 100, settings_ping_count_changed, app);
 
@@ -2144,6 +2197,7 @@ static LanTesterApp* lan_tester_app_alloc(void) {
     variable_item_set_current_value_text(item_dns_ip, app->dns_custom_ip_input);
     variable_item_set_current_value_index(item_net_static, app->net_mode);
     variable_item_set_current_value_text(item_net_static, net_mode_options[app->net_mode]);
+    variable_item_set_current_value_text(item_ping_test_host, app->ping_test_host_input);
 
     /* Ping count: index = count - 1 */
     variable_item_set_current_value_index(item_ping_count, app->ping_count - 1);
@@ -2196,6 +2250,12 @@ static LanTesterApp* lan_tester_app_alloc(void) {
         lan_tester_settings_save(app);
         FURI_LOG_I(TAG, "Generated and saved new unique MAC");
     }
+
+    FURI_LOG_I(
+        TAG,
+        "Heap after alloc: free=%zu max_block=%zu",
+        memmgr_get_free_heap(),
+        memmgr_heap_get_max_free_block());
 
     return app;
 }
@@ -2464,6 +2524,10 @@ static int32_t lan_tester_worker_fn(void* context) {
         break;
     case LanTesterMenuItemPing:
         lan_tester_do_ping(app);
+        lan_tester_update_view(app->text_box_tool, app->tool_text);
+        break;
+    case LanTesterMenuItemPingTestHost:
+        lan_tester_do_ping_test_host(app);
         lan_tester_update_view(app->text_box_tool, app->tool_text);
         break;
     case LanTesterMenuItemStats:
@@ -2938,6 +3002,15 @@ static const char* lan_tester_net_failed_text(LanTesterApp* app) {
     }
 }
 
+/* True only when app->dhcp_gw is a real, discovered gateway (DHCP mode).
+ * In Static/Dynamic mode the "gateway" field is a placeholder with nothing
+ * actually listening there (see lan_tester_ensure_dhcp()), so tools must
+ * not pre-fill ping/traceroute/port-scan targets with it — that silently
+ * points them at a dead address instead of the host the user meant. */
+static bool lan_tester_has_real_gateway(LanTesterApp* app) {
+    return app->net_mode == LanTesterNetModeDhcp;
+}
+
 static bool lan_tester_check_dhcp(LanTesterApp* app) {
     if(!lan_tester_ensure_dhcp(app)) {
         furi_string_set(
@@ -3103,8 +3176,8 @@ static void lan_tester_port_scan_end_callback(void* context) {
         app->port_scan_custom_end = app->port_scan_custom_start;
     }
 
-    /* Now ask for IP */
-    if(app->dhcp_valid &&
+    /* Now ask for IP — pre-fill with the gateway only if it's real (DHCP mode) */
+    if(app->dhcp_valid && lan_tester_has_real_gateway(app) &&
        (app->dhcp_gw[0] | app->dhcp_gw[1] | app->dhcp_gw[2] | app->dhcp_gw[3])) {
         snprintf(
             app->port_scan_ip_input,
@@ -3491,8 +3564,9 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
 
     case LanTesterMenuItemPing:
         app->tool_back_view = LanTesterViewCatDiag;
-        /* Pre-populate with gateway if DHCP available and no custom target set */
-        if(app->dhcp_valid && strcmp(app->ping_ip_input, "8.8.8.8") == 0) {
+        /* Pre-populate with gateway only if it's real (DHCP mode) and no custom target set */
+        if(app->dhcp_valid && lan_tester_has_real_gateway(app) &&
+           strcmp(app->ping_ip_input, "8.8.8.8") == 0) {
             snprintf(
                 app->ping_ip_input,
                 sizeof(app->ping_ip_input),
@@ -3513,6 +3587,17 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
             sizeof(app->ping_ip_input),
             lan_tester_nav_back_diag);
         view_dispatcher_switch_to_view(app->view_dispatcher, LanTesterViewIpKeyboard);
+        break;
+
+    case LanTesterMenuItemPingTestHost:
+        app->tool_back_view = LanTesterViewCatDiag;
+        lan_tester_show_view(
+            app,
+            app->text_box_tool,
+            LanTesterViewToolResult,
+            app->tool_text,
+            "Initializing...\n");
+        lan_tester_worker_start(app, LanTesterMenuItemPingTestHost, LanTesterViewToolResult);
         break;
 
     case LanTesterMenuItemStats:
@@ -3573,11 +3658,20 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
     case LanTesterMenuItemPingSweep:
         app->tool_back_view = LanTesterViewCatScan;
         if(app->dhcp_valid) {
-            /* Already have DHCP — go straight to input */
-            uint8_t net[4];
-            for(int i = 0; i < 4; i++)
-                net[i] = app->dhcp_ip[i] & app->dhcp_mask[i];
+            /* Already have DHCP — go straight to input.
+             * Default the suggested prefix to /24 when the real subnet is
+             * bigger (e.g. APIPA's /16) — editing the CIDR keyboard's
+             * prefix digits requires navigating past the IP octets first,
+             * so it's easy to confirm without ever touching them and end
+             * up sweeping the full huge subnet by accident. */
             uint8_t pfx = arp_mask_to_prefix(app->dhcp_mask);
+            if(pfx < 24) pfx = 24;
+            uint32_t suggest_mask32 = pfx ? (0xFFFFFFFFu << (32 - pfx)) : 0;
+            uint8_t net[4];
+            net[0] = app->dhcp_ip[0] & (uint8_t)(suggest_mask32 >> 24);
+            net[1] = app->dhcp_ip[1] & (uint8_t)(suggest_mask32 >> 16);
+            net[2] = app->dhcp_ip[2] & (uint8_t)(suggest_mask32 >> 8);
+            net[3] = app->dhcp_ip[3] & (uint8_t)(suggest_mask32);
             snprintf(
                 app->ping_sweep_ip_input,
                 sizeof(app->ping_sweep_ip_input),
@@ -3612,7 +3706,8 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
 
     case LanTesterMenuItemTraceroute:
         app->tool_back_view = LanTesterViewCatDiag;
-        if(app->dhcp_valid && strcmp(app->traceroute_host_input, "8.8.8.8") == 0) {
+        if(app->dhcp_valid && lan_tester_has_real_gateway(app) &&
+           strcmp(app->traceroute_host_input, "8.8.8.8") == 0) {
             snprintf(
                 app->traceroute_host_input,
                 sizeof(app->traceroute_host_input),
@@ -3647,8 +3742,8 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
         app->tool_back_view = LanTesterViewPortScanMode;
         if(index == LanTesterMenuItemPortScan) app->port_scan_top100 = false;
         app->port_scan_custom = false;
-        /* Pre-populate target with DHCP gateway if available */
-        if(app->dhcp_valid &&
+        /* Pre-populate target with the gateway only if it's real (DHCP mode) */
+        if(app->dhcp_valid && lan_tester_has_real_gateway(app) &&
            (app->dhcp_gw[0] | app->dhcp_gw[1] | app->dhcp_gw[2] | app->dhcp_gw[3])) {
             snprintf(
                 app->port_scan_ip_input,
@@ -3689,7 +3784,8 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
 
     case LanTesterMenuItemContPing:
         app->tool_back_view = LanTesterViewCatDiag;
-        if(app->dhcp_valid && strcmp(app->cont_ping_ip_input, "8.8.8.8") == 0) {
+        if(app->dhcp_valid && lan_tester_has_real_gateway(app) &&
+           strcmp(app->cont_ping_ip_input, "8.8.8.8") == 0) {
             snprintf(
                 app->cont_ping_ip_input,
                 sizeof(app->cont_ping_ip_input),
@@ -3748,7 +3844,7 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
 
     case LanTesterMenuItemSnmpGet:
         app->tool_back_view = LanTesterViewCatPortInfo;
-        if(app->dhcp_valid) {
+        if(app->dhcp_valid && lan_tester_has_real_gateway(app)) {
             snprintf(
                 app->snmp_ip_input,
                 sizeof(app->snmp_ip_input),
@@ -3773,7 +3869,7 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
 
     case LanTesterMenuItemNtpDiag:
         app->tool_back_view = LanTesterViewCatDiag;
-        if(app->dhcp_valid && app->ntp_ip_input[0] == '\0') {
+        if(app->dhcp_valid && lan_tester_has_real_gateway(app) && app->ntp_ip_input[0] == '\0') {
             snprintf(
                 app->ntp_ip_input,
                 sizeof(app->ntp_ip_input),
@@ -3834,7 +3930,7 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
 
     case LanTesterMenuItemNetbiosQuery:
         app->tool_back_view = LanTesterViewCatScan;
-        if(app->dhcp_valid) {
+        if(app->dhcp_valid && lan_tester_has_real_gateway(app)) {
             snprintf(
                 app->netbios_ip_input,
                 sizeof(app->netbios_ip_input),
@@ -3981,7 +4077,7 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
 
     case LanTesterMenuItemTftpClient:
         app->tool_back_view = LanTesterViewCatUtilities;
-        if(app->dhcp_valid) {
+        if(app->dhcp_valid && lan_tester_has_real_gateway(app)) {
             snprintf(
                 app->tftp_ip_input,
                 sizeof(app->tftp_ip_input),
@@ -4006,7 +4102,7 @@ static void lan_tester_submenu_callback(void* context, uint32_t index) {
 
     case LanTesterMenuItemIpmiClient:
         app->tool_back_view = LanTesterViewCatUtilities;
-        if(app->dhcp_valid) {
+        if(app->dhcp_valid && lan_tester_has_real_gateway(app)) {
             snprintf(
                 app->ipmi_ip_input,
                 sizeof(app->ipmi_ip_input),
@@ -4363,7 +4459,7 @@ static void lan_tester_do_arp_scan(LanTesterApp* app) {
 
 /* ==================== ARP Scan (Passive) ==================== */
 
-#define ARP_PASSIVE_DURATION_MS 20000
+#define ARP_PASSIVE_DURATION_MS 60000
 
 /*
  * Listens for ARP traffic already on the wire instead of actively probing.
@@ -4609,6 +4705,205 @@ static void lan_tester_do_dhcp_analyze(LanTesterApp* app) {
     lan_tester_save_and_notify(app, "dhcp_analyze.txt", app->tool_text);
 }
 
+/*
+ * The W5500's own internal auto-ARP (used by icmp_ping()'s IPRAW sendto())
+ * has proven unreliable for Flipper-initiated sends in testing: incoming
+ * pings (PC -> Flipper) and every one of our own manual MACRAW operations
+ * (ARP Scan, ARP Scan Passive, Dynamic IP derivation) work reliably, but
+ * outbound pings via the chip's built-in ARP resolution consistently time
+ * out. This bypasses that mechanism entirely — resolve the target's MAC
+ * ourselves via MACRAW (the same path already proven reliable elsewhere),
+ * then hand-build and send the ICMP packet, and listen for the reply, all
+ * over MACRAW instead of trusting the chip's opaque internal ARP.
+ */
+/* debug_out: if non-NULL, filled with a short on-screen diagnostic summary
+ * of what actually happened — so this is debuggable with just the Flipper's
+ * own screen, no qFlipper/USB log needed (which can't be connected at the
+ * same time as the W5500's Ethernet cable anyway). */
+/* MACRAW must already be open (via w5500_hal_open_macraw()) before calling
+ * this — callers doing multiple pings in a row should open once, call this
+ * N times, then close once, rather than reopening per attempt (repeated
+ * open/close churn was a suspect in intermittent ARP-resolve failures). */
+static bool lan_tester_icmp_ping_macraw_attempt(
+    LanTesterApp* app,
+    const uint8_t target_ip[4],
+    uint16_t seq,
+    uint32_t timeout_ms,
+    PingResult* result,
+    char* debug_out,
+    size_t debug_out_size) {
+    memcpy(result->target_ip, target_ip, 4);
+    result->seq = seq;
+    result->rtt_ms = 0;
+    result->success = false;
+    if(debug_out && debug_out_size) debug_out[0] = '\0';
+
+    wiz_NetInfo net_info;
+    wizchip_getnetinfo(&net_info);
+
+    uint32_t op_start = furi_get_tick();
+
+    /* Step 1: resolve the target's MAC via a manual ARP request/reply.
+     * A single ARP request can just get lost on this link (observed: single-
+     * shot attempts fail outright about as often as they succeed) — the
+     * Active ARP Scan tool works reliably because it fires many requests and
+     * only needs a fraction to land. Do the same here: resend every 500ms
+     * instead of firing once and hoping. */
+    uint8_t target_mac[6];
+    bool resolved = false;
+    {
+        uint8_t arp_frame[42];
+        arp_build_request(arp_frame, app->mac_addr, net_info.ip, target_ip);
+        w5500_hal_macraw_send(arp_frame, 42);
+
+        uint32_t arp_start = furi_get_tick();
+        uint32_t last_resend = arp_start;
+        while(!resolved && (furi_get_tick() - arp_start) < 2000 && app->worker_running) {
+            uint16_t recv_len = w5500_hal_macraw_recv(app->frame_buf, FRAME_BUF_SIZE);
+            if(recv_len > 0) {
+                uint8_t reply_mac[6], reply_ip[4];
+                if(arp_parse_reply(app->frame_buf, recv_len, reply_mac, reply_ip) &&
+                   memcmp(reply_ip, target_ip, 4) == 0) {
+                    memcpy(target_mac, reply_mac, 6);
+                    resolved = true;
+                }
+            }
+            if(!resolved && (furi_get_tick() - last_resend) >= 500) {
+                w5500_hal_macraw_send(arp_frame, 42);
+                last_resend = furi_get_tick();
+            }
+            furi_delay_ms(1);
+        }
+    }
+
+    if(!resolved) {
+        if(debug_out) snprintf(debug_out, debug_out_size, "  ARP resolve: FAILED\n");
+        return false;
+    }
+    char arp_line[40];
+    snprintf(
+        arp_line,
+        sizeof(arp_line),
+        "  ARP ok ->%02X:%02X:%02X:%02X:%02X:%02X\n",
+        target_mac[0],
+        target_mac[1],
+        target_mac[2],
+        target_mac[3],
+        target_mac[4],
+        target_mac[5]);
+
+    /* Step 2: hand-build an Ethernet + IPv4 + ICMP Echo Request */
+    uint8_t pkt[14 + 20 + 8 + 32];
+    memset(pkt, 0, sizeof(pkt));
+
+    memcpy(pkt, target_mac, 6);
+    memcpy(pkt + 6, app->mac_addr, 6);
+    pkt_write_u16_be(pkt + 12, ETHERTYPE_IPV4);
+
+    uint8_t* ip_hdr = pkt + 14;
+    ip_hdr[0] = 0x45; /* version 4, IHL 5 (20-byte header, no options) */
+    ip_hdr[1] = 0x00; /* TOS */
+    pkt_write_u16_be(ip_hdr + 2, 20 + 8 + 32); /* total length */
+    pkt_write_u16_be(ip_hdr + 4, seq); /* identification */
+    pkt_write_u16_be(ip_hdr + 6, 0x0000); /* flags / fragment offset */
+    ip_hdr[8] = 64; /* TTL */
+    ip_hdr[9] = 1; /* protocol: ICMP */
+    pkt_write_u16_be(ip_hdr + 10, 0); /* checksum — filled in below */
+    memcpy(ip_hdr + 12, net_info.ip, 4);
+    memcpy(ip_hdr + 16, target_ip, 4);
+    pkt_write_u16_be(ip_hdr + 10, pkt_checksum(ip_hdr, 20));
+
+    uint8_t* icmp = ip_hdr + 20;
+    icmp[0] = ICMP_TYPE_ECHO_REQUEST;
+    icmp[1] = 0; /* code */
+    pkt_write_u16_be(icmp + 2, 0); /* checksum — filled in below */
+    pkt_write_u16_be(icmp + 4, 0x0001); /* identifier */
+    pkt_write_u16_be(icmp + 6, seq);
+    for(uint8_t i = 0; i < 32; i++) {
+        icmp[8 + i] = (uint8_t)(i + 0x30);
+    }
+    pkt_write_u16_be(icmp + 2, pkt_checksum(icmp, 8 + 32));
+
+    uint32_t send_tick = furi_get_tick();
+    uint16_t sent_bytes = w5500_hal_macraw_send(pkt, sizeof(pkt));
+
+    /* Step 3: wait for a matching Echo Reply.
+     * Same lesson as the ARP fix: a single transmitted frame can just vanish
+     * on this link (confirmed via Wireshark — attempt #1's ICMP request never
+     * hit the wire at all despite the driver reporting a successful send).
+     * Resend the same request every 500ms instead of firing once. */
+    uint32_t elapsed_already = furi_get_tick() - op_start;
+    uint32_t remaining = (timeout_ms > elapsed_already) ? (timeout_ms - elapsed_already) : 0;
+    uint32_t wait_start = furi_get_tick();
+    uint32_t last_icmp_resend = wait_start;
+
+    /* Breakdown of what actually shows up during the wait, not just a count
+     * — this link has heavy background broadcast chatter (mDNS/SSDP/ARP)
+     * since MACRAW runs promiscuous (MFEN=0), so "frames seen" alone can't
+     * tell us if the real reply ever arrived or if we're just seeing noise. */
+    uint16_t frames_seen = 0;
+    uint16_t frames_from_target = 0;
+    uint16_t frames_arp = 0;
+    uint16_t frames_ipv4_other = 0; /* IPv4 but not from target/not ICMP */
+    uint16_t frames_other = 0; /* neither ARP nor IPv4 (IPv6, LLDP, etc.) */
+    while((furi_get_tick() - wait_start) < remaining && app->worker_running) {
+        uint16_t recv_len = w5500_hal_macraw_recv(app->frame_buf, FRAME_BUF_SIZE);
+        if(recv_len > 0) {
+            frames_seen++;
+            uint16_t et = pkt_get_ethertype(app->frame_buf);
+            if(et == ETHERTYPE_ARP) {
+                frames_arp++;
+            } else if(et == ETHERTYPE_IPV4 && recv_len >= 14 + 20 + 8) {
+                const uint8_t* rx_ip = app->frame_buf + 14;
+                bool from_target =
+                    (rx_ip[0] >> 4) == 4 && rx_ip[9] == 1 &&
+                    memcmp(rx_ip + 12, target_ip, 4) == 0;
+                if(from_target) {
+                    frames_from_target++;
+                    uint8_t ihl = (uint8_t)((rx_ip[0] & 0x0F) * 4);
+                    const uint8_t* rx_icmp = rx_ip + ihl;
+                    if(recv_len >= (uint16_t)(14 + ihl + 8) &&
+                       rx_icmp[0] == ICMP_TYPE_ECHO_REPLY) {
+                        uint16_t rx_seq = pkt_read_u16_be(rx_icmp + 6);
+                        if(rx_seq == seq) {
+                            result->rtt_ms = furi_get_tick() - send_tick;
+                            result->success = true;
+                            break;
+                        }
+                    }
+                } else {
+                    frames_ipv4_other++;
+                }
+            } else {
+                frames_other++;
+            }
+        }
+        if((furi_get_tick() - last_icmp_resend) >= 500) {
+            w5500_hal_macraw_send(pkt, sizeof(pkt));
+            last_icmp_resend = furi_get_tick();
+        }
+        furi_delay_ms(1);
+    }
+
+    if(debug_out) {
+        snprintf(
+            debug_out,
+            debug_out_size,
+            "%s  sent %d/%dB seq=%d\n  seen=%d tgt=%d\n  arp=%d ipv4o=%d oth=%d\n",
+            arp_line,
+            sent_bytes,
+            (int)sizeof(pkt),
+            seq,
+            frames_seen,
+            frames_from_target,
+            frames_arp,
+            frames_ipv4_other,
+            frames_other);
+    }
+
+    return result->success;
+}
+
 static void lan_tester_do_ping(LanTesterApp* app) {
     furi_string_reset(app->tool_text);
 
@@ -4621,12 +4916,17 @@ static void lan_tester_do_ping(LanTesterApp* app) {
     wiz_NetInfo net_info;
     wizchip_getnetinfo(&net_info);
 
-    /* Use custom IP if set, otherwise ping the gateway */
+    /* Use custom IP if set, otherwise the gateway — but only if it's real
+     * (DHCP mode). In Static/Dynamic mode the gateway is a placeholder
+     * nothing is listening on; pinging it would just time out silently. */
     uint8_t target_ip[4];
     if(app->ping_ip_custom[0] != 0) {
         memcpy(target_ip, app->ping_ip_custom, 4);
-    } else {
+    } else if(lan_tester_has_real_gateway(app)) {
         memcpy(target_ip, net_info.gw, 4);
+    } else {
+        furi_string_set(app->tool_text, "No target set.\nEnter an IP to ping.\n");
+        return;
     }
 
     char target_str[16], my_ip_str[16];
@@ -4636,20 +4936,77 @@ static void lan_tester_do_ping(LanTesterApp* app) {
     furi_string_printf(app->tool_text, "Ping %s (me:%s)\n", target_str, my_ip_str);
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
+    if(!w5500_hal_open_macraw()) {
+        furi_string_cat_printf(app->tool_text, "MACRAW open failed.\n");
+        return;
+    }
+
     /* Send pings (count from settings) */
     for(uint16_t i = 1; i <= app->ping_count && app->worker_running; i++) {
         PingResult result;
-        bool ok = icmp_ping(
-            W5500_PING_SOCKET, target_ip, i, app->ping_timeout_ms, &result, &app->worker_running);
+        char dbg[160];
+        bool ok = lan_tester_icmp_ping_macraw_attempt(
+            app, target_ip, i, app->ping_timeout_ms, &result, dbg, sizeof(dbg));
         if(ok) {
             furi_string_cat_printf(
                 app->tool_text, "#%d: %lu ms\n", i, (unsigned long)result.rtt_ms);
         } else {
-            furi_string_cat_printf(app->tool_text, "#%d: timeout\n", i);
+            furi_string_cat_printf(app->tool_text, "#%d: timeout\n%s", i, dbg);
         }
         lan_tester_update_view(app->text_box_tool, app->tool_text);
         furi_delay_ms(100);
     }
+
+    w5500_hal_close_macraw();
+}
+
+/* One-tap repeat ping against a fixed host saved in Settings > Test Host IP —
+ * no IP keyboard step, for fast iterative connectivity testing. */
+static void lan_tester_do_ping_test_host(LanTesterApp* app) {
+    furi_string_reset(app->tool_text);
+
+    if(!(app->ping_test_host[0] | app->ping_test_host[1] | app->ping_test_host[2] |
+         app->ping_test_host[3])) {
+        furi_string_set(app->tool_text, "No test host set.\n(Settings>Test Host IP)\n");
+        return;
+    }
+
+    furi_string_set(app->tool_text, lan_tester_net_connecting_text(app));
+    lan_tester_update_view(app->text_box_tool, app->tool_text);
+
+    if(!lan_tester_check_dhcp(app)) return;
+
+    wiz_NetInfo net_info;
+    wizchip_getnetinfo(&net_info);
+
+    char target_str[16], my_ip_str[16];
+    pkt_format_ip(app->ping_test_host, target_str);
+    pkt_format_ip(net_info.ip, my_ip_str);
+
+    furi_string_printf(app->tool_text, "Ping %s (me:%s)\n", target_str, my_ip_str);
+    lan_tester_update_view(app->text_box_tool, app->tool_text);
+
+    if(!w5500_hal_open_macraw()) {
+        furi_string_cat_printf(app->tool_text, "MACRAW open failed.\n");
+        return;
+    }
+
+    for(uint16_t i = 1; i <= app->ping_count && app->worker_running; i++) {
+        PingResult result;
+        char dbg[160];
+        bool ok = lan_tester_icmp_ping_macraw_attempt(
+            app, app->ping_test_host, i, app->ping_timeout_ms, &result, dbg, sizeof(dbg));
+        if(ok) {
+            furi_string_cat_printf(
+                app->tool_text, "#%d: %lu ms\n", i, (unsigned long)result.rtt_ms);
+        } else {
+            furi_string_cat_printf(app->tool_text, "#%d: timeout\n%s", i, dbg);
+        }
+        lan_tester_update_view(app->text_box_tool, app->tool_text);
+        furi_delay_ms(100);
+    }
+
+    w5500_hal_close_macraw();
 }
 
 /* ==================== DNS Lookup ==================== */
@@ -4881,11 +5238,16 @@ static void lan_tester_do_ping_sweep_detect(LanTesterApp* app) {
         return;
     }
 
-    /* Populate CIDR from detected network */
-    uint8_t net[4];
-    for(int i = 0; i < 4; i++)
-        net[i] = app->dhcp_ip[i] & app->dhcp_mask[i];
+    /* Populate CIDR from detected network — default to /24 when the real
+     * subnet is bigger (see comment at the other pre-fill site for why). */
     uint8_t pfx = arp_mask_to_prefix(app->dhcp_mask);
+    if(pfx < 24) pfx = 24;
+    uint32_t suggest_mask32 = pfx ? (0xFFFFFFFFu << (32 - pfx)) : 0;
+    uint8_t net[4];
+    net[0] = app->dhcp_ip[0] & (uint8_t)(suggest_mask32 >> 24);
+    net[1] = app->dhcp_ip[1] & (uint8_t)(suggest_mask32 >> 16);
+    net[2] = app->dhcp_ip[2] & (uint8_t)(suggest_mask32 >> 8);
+    net[3] = app->dhcp_ip[3] & (uint8_t)(suggest_mask32);
     snprintf(
         app->ping_sweep_ip_input,
         sizeof(app->ping_sweep_ip_input),
@@ -4899,6 +5261,10 @@ static void lan_tester_do_ping_sweep_detect(LanTesterApp* app) {
     /* Signal main thread to show input */
     view_dispatcher_send_custom_event(app->view_dispatcher, CUSTOM_EVENT_PING_SWEEP_READY);
 }
+
+/* Max hosts to actively sweep in one run — see the range-capping logic
+ * below for why (huge subnets like APIPA's /16 would take hours otherwise). */
+#define PING_SWEEP_MAX_HOSTS 256
 
 /* Phase 2: actual ping sweep scan */
 static void lan_tester_do_ping_sweep(LanTesterApp* app) {
@@ -4954,11 +5320,51 @@ static void lan_tester_do_ping_sweep(LanTesterApp* app) {
         return;
     }
 
-    furi_string_printf(
-        app->tool_text,
-        "[PingSweep]=======00%%\n"
-        "Alive: 0/0/%d\n",
-        num_hosts);
+    /* Huge subnet (e.g. APIPA /16 = up to 65534 hosts) — sweeping the
+     * whole thing at ping_timeout_ms per silent host could take hours.
+     * Center a smaller window on our own IP instead of the range start,
+     * since link-local addresses land pseudo-randomly in the range. */
+    bool range_capped = false;
+    if(num_hosts > PING_SWEEP_MAX_HOSTS) {
+        uint32_t full_start = pkt_read_u32_be(start_ip);
+        uint32_t full_end = pkt_read_u32_be(end_ip);
+        uint32_t my_ip = pkt_read_u32_be(net_info.ip);
+        uint32_t half = PING_SWEEP_MAX_HOSTS / 2;
+
+        uint32_t win_start = (my_ip > full_start + half) ? my_ip - half : full_start;
+        uint32_t win_end = win_start + PING_SWEEP_MAX_HOSTS - 1;
+        if(win_end > full_end) {
+            win_end = full_end;
+            win_start = (win_end >= full_start + PING_SWEEP_MAX_HOSTS - 1) ?
+                            win_end - PING_SWEEP_MAX_HOSTS + 1 :
+                            full_start;
+        }
+
+        pkt_write_u32_be(start_ip, win_start);
+        pkt_write_u32_be(end_ip, win_end);
+        num_hosts = (uint16_t)(win_end - win_start + 1);
+        range_capped = true;
+    }
+
+    if(range_capped) {
+        char start_str[16], end_str[16];
+        pkt_format_ip(start_ip, start_str);
+        pkt_format_ip(end_ip, end_str);
+        furi_string_printf(
+            app->tool_text,
+            "[PingSweep]=======00%%\n"
+            "Range too big, capped\nto %s-%s\n"
+            "Alive: 0/0/%d\n",
+            start_str,
+            end_str,
+            num_hosts);
+    } else {
+        furi_string_printf(
+            app->tool_text,
+            "[PingSweep]=======00%%\n"
+            "Alive: 0/0/%d\n",
+            num_hosts);
+    }
     lan_tester_update_view(app->text_box_tool, app->tool_text);
 
     /* Sweep — results written to file, no memory cap */

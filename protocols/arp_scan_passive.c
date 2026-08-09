@@ -28,16 +28,34 @@ void arp_scan_passive_free(ArpPassiveState* state) {
 }
 
 bool arp_scan_passive_process_frame(ArpPassiveState* state, const uint8_t* frame, uint16_t len) {
-    if(len < 42) return false; /* minimum ARP frame: 14 Ethernet + 28 ARP */
-    if(pkt_get_ethertype(frame) != ETHERTYPE_ARP) return false;
+    if(len < ETH_HEADER_SIZE) return false;
 
-    const uint8_t* arp = frame + ETH_HEADER_SIZE;
-    if(pkt_read_u16_be(&arp[0]) != ARP_HTYPE_ETHERNET) return false;
-    if(pkt_read_u16_be(&arp[2]) != ARP_PTYPE_IPV4) return false;
-    if(arp[4] != 6 || arp[5] != 4) return false;
+    uint16_t ethertype = pkt_get_ethertype(frame);
+    uint8_t sender_mac[6];
+    uint8_t sender_ip[4];
 
-    const uint8_t* sender_mac = &arp[8];
-    const uint8_t* sender_ip = &arp[14];
+    if(ethertype == ETHERTYPE_ARP) {
+        if(len < 42) return false; /* minimum ARP frame: 14 Ethernet + 28 ARP */
+        const uint8_t* arp = frame + ETH_HEADER_SIZE;
+        if(pkt_read_u16_be(&arp[0]) != ARP_HTYPE_ETHERNET) return false;
+        if(pkt_read_u16_be(&arp[2]) != ARP_PTYPE_IPV4) return false;
+        if(arp[4] != 6 || arp[5] != 4) return false;
+        memcpy(sender_mac, &arp[8], 6);
+        memcpy(sender_ip, &arp[14], 4);
+    } else if(ethertype == ETHERTYPE_IPV4) {
+        /* Any IPv4 traffic reveals its sender too, not just ARP resolution
+         * moments. Needed because a host with an already-warm ARP cache
+         * entry (e.g. mid `ping -t` from earlier testing) sends no new ARP
+         * packets at all — ARP-only listening can miss it completely even
+         * with heavy traffic on the wire. */
+        if(len < ETH_HEADER_SIZE + 20) return false; /* minimum IPv4 header */
+        const uint8_t* ip_hdr = frame + ETH_HEADER_SIZE;
+        if((ip_hdr[0] >> 4) != 4) return false; /* version nibble != 4 */
+        memcpy(sender_mac, frame + 6, 6); /* Ethernet source MAC */
+        memcpy(sender_ip, &ip_hdr[12], 4); /* IP source address */
+    } else {
+        return false;
+    }
 
     /* Skip 0.0.0.0 sender — that's a duplicate-address probe, not a real host */
     if(sender_ip[0] == 0 && sender_ip[1] == 0 && sender_ip[2] == 0 && sender_ip[3] == 0) {

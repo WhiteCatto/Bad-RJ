@@ -71,7 +71,18 @@ bool icmp_ping(
     /* Send ICMP request (port must be non-zero for WIZnet sendto validation) */
     int32_t sent = sendto(socket_num, icmp_buf, ICMP_PACKET_SIZE, (uint8_t*)target_ip, 1);
     if(sent <= 0) {
-        FURI_LOG_E(TAG, "Failed to send ICMP request: %ld", sent);
+        /* -13 = SOCKERR_TIMEOUT: the chip's own internal ARP resolution for
+         * this destination never got a reply. -7 = SOCKERR_SOCKSTATUS,
+         * -12 = SOCKERR_IPINVALID — see socket.h for the full list. */
+        FURI_LOG_E(
+            TAG,
+            "sendto failed for %d.%d.%d.%d: %ld (%s)",
+            target_ip[0],
+            target_ip[1],
+            target_ip[2],
+            target_ip[3],
+            sent,
+            (sent == -13) ? "ARP/SOCKERR_TIMEOUT" : "other");
         close(socket_num);
         return false;
     }

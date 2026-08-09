@@ -262,7 +262,7 @@ The built-in lookup table covers ~120 common OUI prefixes including:
 
 - **Bad-RJ** is a fork of [dok2d/fz-W5500-lan-analyse](https://github.com/dok2d/fz-W5500-lan-analyse), maintained by [nullsp3ct0r](https://github.com/nullsp3ct0r) and [WhiteCatto](https://github.com/WhiteCatto)
 - Custom "Hacker Detective" loading screen (`hacker_gui.c`) by [WhiteCatto](https://github.com/WhiteCatto)
-- Based on [arag0re/fz-eth-troubleshooter](https://github.com/arag0re/fz-eth-troubleshooter) (fork of [karasevia/finik_eth](https://github.com/karasevia/finik_eth))
+- Based on [arag0re/fz-eth-troubleshooter](https://github.com/arag0re/fz-eth-troubleshooter) (fork of [karasevia/finik_eth](https://github.com/karasevia/finik_eth)) — license status of this original upstream work is unclear and both authors appear to be long-inactive; attribution is given here in good faith. If you are a rights holder with concerns, please open an issue.
 - Uses [WIZnet ioLibrary_Driver](https://github.com/Wiznet/ioLibrary_Driver) for W5500 hardware abstraction
 - Built for [Flipper Zero OFW](https://github.com/flipperdevices/flipperzero-firmware)
 
