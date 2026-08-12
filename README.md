@@ -8,7 +8,8 @@ Turn your **Flipper Zero + W5500 Lite** module into a professional-grade portabl
 ![Build](https://img.shields.io/badge/build-ufbt-yellow)
 ![Version](https://img.shields.io/badge/version-2.9.0-brightgreen)
 
-![Main menu](docs/screenshots/main_menu.png)
+<img width="1440" height="720" alt="download (6)" src="https://github.com/user-attachments/assets/708aa1ce-7c20-4884-9659-2b89a37f3bb5" />
+
 
 ---
 
